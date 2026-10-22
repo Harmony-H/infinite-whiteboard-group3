@@ -569,6 +569,10 @@
     let stickyColor = DEFAULT_STICKY_COLOR;
     let smoothStrokes = true;
     let activePointers = new Map();
+    let activePenPointerIds = new Set();
+    let ignoredPointerIds = new Set();
+    let penModeDetected = false;
+    let nativeTouchMode = false;
     let drawingPointerId = null;
     let strokeErasePointerId = null;
     let selectionPointerId = null;
@@ -2072,7 +2076,8 @@
     }
 
     function getPointerPair() {
-      const pointers = Array.from(activePointers.values());
+      const pointers = Array.from(activePointers.values())
+        .filter((pointer) => pointer.pointerType === "touch" && !pointer.ignored);
       if (pointers.length < 2) return null;
       return [pointers[0], pointers[1]];
     }
@@ -2127,8 +2132,205 @@
     }
 
     function updateActivePointer(event) {
-      activePointers.set(event.pointerId, getCanvasPoint(event));
+      const previous = activePointers.get(event.pointerId);
+      const pointerType = previous?.syntheticPen
+        ? "pen"
+        : event.pointerType || previous?.pointerType || "mouse";
+      activePointers.set(event.pointerId, {
+        ...getCanvasPoint(event),
+        pointerType,
+        syntheticPen: Boolean(previous?.syntheticPen),
+        ignored: Boolean(previous?.ignored)
+          || ignoredPointerIds.has(event.pointerId)
+          || (pointerType === "touch" && hasActivePenPointer())
+      });
     }
+
+    function getActiveTouchCount() {
+      return Array.from(activePointers.values())
+        .filter((pointer) => pointer.pointerType === "touch" && !pointer.ignored)
+        .length;
+    }
+
+    function getTrackedTouchCount() {
+      return Array.from(activePointers.values())
+        .filter((pointer) => pointer.pointerType === "touch")
+        .length;
+    }
+
+    function hasActivePenPointer() {
+      if (activePenPointerIds.size > 0) return true;
+      if (drawingPointerId === null) return false;
+      return activePointers.get(drawingPointerId)?.pointerType === "pen";
+    }
+
+    function ignoreActiveTouchPointers() {
+      for (const [pointerId, pointer] of activePointers) {
+        if (pointer.pointerType === "touch") {
+          pointer.ignored = true;
+          ignoredPointerIds.add(pointerId);
+        }
+      }
+      if (pinchState) pinchState = null;
+      if (isPanning && activePointers.get(panPointerId)?.pointerType === "touch") {
+        endPan({ pointerId: panPointerId });
+      }
+    }
+
+    function nativeTouchId(touch) {
+      return "touch:" + touch.identifier;
+    }
+
+    function nativeTouchEvent(touch, pointerType) {
+      return {
+        pointerId: nativeTouchId(touch),
+        pointerType,
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        button: 0,
+        buttons: 1,
+        pressure: typeof touch.force === "number" ? touch.force : 0.5
+      };
+    }
+
+    function isStylusTouch(touch) {
+      return touch.touchType === "stylus";
+    }
+
+    function enterNativeTouchMode() {
+      if (nativeTouchMode) return;
+      nativeTouchMode = true;
+
+      for (const [pointerId, pointer] of activePointers) {
+        if (pointer.pointerType !== "mouse") activePointers.delete(pointerId);
+      }
+      activePenPointerIds.clear();
+      ignoredPointerIds.clear();
+      pinchState = null;
+
+      if (isPanning) {
+        isPanning = false;
+        panPointerId = null;
+        lastPanPoint = null;
+        canvas.classList.remove("dragging-pan");
+      }
+    }
+
+    function registerNativeTouch(touch, pointerType) {
+      const event = nativeTouchEvent(touch, pointerType);
+      activePointers.set(event.pointerId, {
+        ...getCanvasPoint(event),
+        pointerType,
+        syntheticPen: false,
+        ignored: false
+      });
+      return event;
+    }
+
+    function updateNativeTouch(touch, pointerType) {
+      const event = nativeTouchEvent(touch, pointerType);
+      const previous = activePointers.get(event.pointerId);
+      activePointers.set(event.pointerId, {
+        ...getCanvasPoint(event),
+        pointerType: previous?.pointerType || pointerType,
+        syntheticPen: Boolean(previous?.syntheticPen),
+        ignored: Boolean(previous?.ignored)
+      });
+      return event;
+    }
+
+    function handleNativeTouchStart(event) {
+      const changedTouches = Array.from(event.changedTouches || []);
+      const stylusTouches = changedTouches.filter(isStylusTouch);
+      if (!nativeTouchMode && stylusTouches.length > 0) {
+        enterNativeTouchMode();
+      }
+      if (!nativeTouchMode) return;
+
+      event.preventDefault();
+
+      for (const touch of stylusTouches) {
+        const stylusEvent = registerNativeTouch(touch, "pen");
+        const pointer = activePointers.get(stylusEvent.pointerId);
+        activePenPointerIds.add(stylusEvent.pointerId);
+        ignoreActiveTouchPointers();
+
+        if (currentStroke || previewShape) {
+          drawingPointerId = stylusEvent.pointerId;
+          if (strokeErasePointerId !== null) strokeErasePointerId = stylusEvent.pointerId;
+        } else {
+          beginDrawing(stylusEvent);
+        }
+
+        if (pointer) pointer.ignored = false;
+      }
+
+      for (const touch of changedTouches) {
+        if (isStylusTouch(touch)) continue;
+        const touchEvent = registerNativeTouch(touch, "touch");
+        const pointer = activePointers.get(touchEvent.pointerId);
+        if (activePenPointerIds.size > 0 || currentStroke || previewShape) {
+          pointer.ignored = true;
+          ignoredPointerIds.add(touchEvent.pointerId);
+        }
+      }
+
+      if (stylusTouches.length === 0 && getActiveTouchCount() === 2) {
+        beginPinch();
+      }
+    }
+
+    function handleNativeTouchMove(event) {
+      if (!nativeTouchMode) return;
+      event.preventDefault();
+
+      for (const touch of Array.from(event.changedTouches || [])) {
+        const pointerId = nativeTouchId(touch);
+        const previous = activePointers.get(pointerId);
+        if (!previous) continue;
+        const touchEvent = updateNativeTouch(touch, isStylusTouch(touch) ? "pen" : previous.pointerType);
+        const pointer = activePointers.get(pointerId);
+        if (pointer.ignored) continue;
+
+        if (pointer.pointerType === "pen") {
+          continueDrawing(touchEvent);
+        }
+      }
+
+      if (activePenPointerIds.size === 0 && getActiveTouchCount() >= 2) {
+        continuePinch();
+      }
+    }
+
+    function handleNativeTouchEnd(event) {
+      if (!nativeTouchMode) return;
+      event.preventDefault();
+
+      for (const touch of Array.from(event.changedTouches || [])) {
+        const pointerId = nativeTouchId(touch);
+        const pointer = activePointers.get(pointerId);
+        if (!pointer) continue;
+        const touchEvent = nativeTouchEvent(touch, pointer.pointerType);
+
+        if (pointer.pointerType === "pen") {
+          if (drawingPointerId === pointerId) endDrawing(touchEvent);
+          activePenPointerIds.delete(pointerId);
+        }
+
+        activePointers.delete(pointerId);
+        ignoredPointerIds.delete(pointerId);
+      }
+
+      if (pinchState && getActiveTouchCount() < 2) {
+        cancelDrawing();
+        pinchState = null;
+      }
+    }
+
+    canvas.addEventListener("touchstart", handleNativeTouchStart, { passive: false });
+    canvas.addEventListener("touchmove", handleNativeTouchMove, { passive: false });
+    canvas.addEventListener("touchend", handleNativeTouchEnd, { passive: false });
+    canvas.addEventListener("touchcancel", handleNativeTouchEnd, { passive: false });
 
     function preventAppGesture(event) {
       if (isEditingTextInput(event.target)) return;
@@ -2138,18 +2340,50 @@
     }
 
     canvas.addEventListener("pointerdown", (event) => {
+      if (nativeTouchMode && event.pointerType !== "mouse") return;
       if (event.target !== canvas) return;
       event.preventDefault();
       canvas.setPointerCapture(event.pointerId);
       updateActivePointer(event);
 
-      if (activePointers.size === 2) {
-        beginPinch();
+      const pointer = activePointers.get(event.pointerId);
+      let pointerType = pointer?.pointerType || event.pointerType || "mouse";
+
+      if (pointerType === "touch"
+        && penModeDetected
+        && activeTool !== "pan"
+        && !isSpacePressed
+        && !pointer?.ignored
+        && getTrackedTouchCount() > 1) {
+        pointer.pointerType = "pen";
+        pointer.syntheticPen = true;
+        pointerType = "pen";
+      }
+
+      if (pointerType === "pen") {
+        penModeDetected = true;
+        activePenPointerIds.add(event.pointerId);
+        ignoreActiveTouchPointers();
+      }
+
+      if (pointerType === "touch"
+        && (currentStroke || previewShape || drawingPointerId !== null)) {
+        pointer.ignored = true;
+        ignoredPointerIds.add(event.pointerId);
+      }
+
+      if (pointer?.ignored) {
         return;
       }
 
-      if (activePointers.size > 2) {
+      const activeTouchCount = getActiveTouchCount();
+      if (pointerType === "touch" && activeTouchCount > 2) {
         cancelDrawing();
+        return;
+      }
+
+      if (activeTouchCount === 2) {
+        beginPinch();
         return;
       }
 
@@ -2158,40 +2392,70 @@
         return;
       }
 
-      if (event.button === 1 || event.button === 2 || isSpacePressed || activeTool === "pan") {
+      if (pointerType === "touch"
+        && penModeDetected
+        && activeTool !== "pan"
+        && !isSpacePressed) {
+        return;
+      }
+
+      if (pointerType === "touch"
+        || event.button === 1
+        || event.button === 2
+        || isSpacePressed
+        || activeTool === "pan") {
         beginPan(event);
       } else {
         beginDrawing(event);
       }
-    });
+    }, { passive: false });
 
     canvas.addEventListener("pointermove", (event) => {
+      if (nativeTouchMode && event.pointerType !== "mouse") return;
       if (!activePointers.has(event.pointerId)) return;
       event.preventDefault();
       updateActivePointer(event);
 
-      if (activePointers.size >= 2) {
+      const pointer = activePointers.get(event.pointerId);
+      if (pointer?.ignored) return;
+
+      if (getActiveTouchCount() >= 2) {
         continuePinch();
       } else if (stickyResizePointerId === event.pointerId) {
         continueStickyResize(event);
-      } else if (isPanning) {
+      } else if (pointer?.pointerType === "touch") {
+        if (penModeDetected && activeTool !== "pan" && !isSpacePressed) return;
+        if (isPanning) continuePan(event);
+      } else if (isPanning && panPointerId === event.pointerId) {
         continuePan(event);
       } else {
         continueDrawing(event);
       }
-    });
+    }, { passive: false });
 
     function finishPointer(event) {
-      if (activePointers.has(event.pointerId)) {
-        activePointers.delete(event.pointerId);
+      const pointer = activePointers.get(event.pointerId);
+      const pointerType = pointer?.pointerType || event.pointerType || "mouse";
+      const wasIgnored = Boolean(pointer?.ignored) || ignoredPointerIds.has(event.pointerId);
+      activePointers.delete(event.pointerId);
+      activePenPointerIds.delete(event.pointerId);
+      ignoredPointerIds.delete(event.pointerId);
+
+      if (wasIgnored) {
+        if (canvas.hasPointerCapture && canvas.hasPointerCapture(event.pointerId)) {
+          canvas.releasePointerCapture(event.pointerId);
+        }
+        return;
       }
 
-      if (pinchState) {
+      if (pointerType === "touch" && pinchState) {
         cancelDrawing();
         pinchState = null;
       } else if (stickyResizePointerId === event.pointerId) {
         endStickyResize(event);
-      } else if (isPanning) {
+      } else if (pointerType === "touch") {
+        endPan(event);
+      } else if (isPanning && panPointerId === event.pointerId) {
         endPan(event);
       } else {
         endDrawing(event);
@@ -2202,8 +2466,14 @@
       }
     }
 
-    canvas.addEventListener("pointerup", finishPointer);
-    canvas.addEventListener("pointercancel", finishPointer);
+    canvas.addEventListener("pointerup", (event) => {
+      if (nativeTouchMode && event.pointerType !== "mouse") return;
+      finishPointer(event);
+    });
+    canvas.addEventListener("pointercancel", (event) => {
+      if (nativeTouchMode && event.pointerType !== "mouse") return;
+      finishPointer(event);
+    });
     canvas.addEventListener("pointerleave", (event) => {
       if (event.pointerType === "mouse" && event.buttons !== 0) {
         finishPointer(event);
