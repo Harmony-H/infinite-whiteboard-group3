@@ -4,7 +4,7 @@
 
 Infinite Whiteboard 是一款專為教學情境設計的無邊際虛擬白板，可直接在電腦、平板、手機或教室電子白板上使用，支援自由書寫、繪圖、加入便條貼，適合用於課程講解、概念整理、腦力激盪、小組討論與重點統整。使用者無須註冊帳號，也不必安裝額外軟體；有網路時可直接開啟網站使用，無網路時只需下載 `index.html` 並以瀏覽器開啟即可執行。白板內容僅存在於目前使用的裝置與瀏覽器中，不會上傳；AI 對話是選用功能，使用時訊息會直接傳送至所選的 OpenAI 或長庚 CGU API。如需保存白板，可下載為圖片或匯出白板檔案，並於其他裝置重新匯入後繼續編輯。
 
-直接使用：[https://educatres.github.io/infinite-whiteboard/](https://educatres.github.io/infinite-whiteboard/)
+直接使用：https://harmony-h.github.io/infinite-whiteboard-group3/
 
 ## 功能
 
