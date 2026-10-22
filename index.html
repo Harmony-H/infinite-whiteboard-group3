@@ -278,6 +278,53 @@
       box-shadow: inset 0 0 0 1px rgba(23, 32, 51, 0.08);
     }
 
+    #aiDialog {
+      width: min(620px, calc(100vw - 24px));
+      max-width: none;
+      height: min(760px, calc(100dvh - 32px));
+      max-height: none;
+      padding: 0;
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      color: var(--ink);
+      background: #fff;
+      box-shadow: 0 24px 80px rgba(24, 38, 58, 0.28);
+    }
+
+    #aiDialog::backdrop {
+      background: rgba(17, 27, 43, 0.42);
+      backdrop-filter: blur(3px);
+    }
+
+    .ai-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+    .ai-header, .ai-key-controls, .ai-composer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; }
+    .ai-header { justify-content: space-between; border-bottom: 1px solid #e7edf2; }
+    .ai-title { margin: 0; font-size: 17px; }
+    .ai-key-section { padding: 12px 16px; background: #f7fafb; border-bottom: 1px solid #e7edf2; }
+    .ai-provider-controls { display: grid; grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1.2fr); gap: 8px; margin-bottom: 10px; }
+    .ai-provider-controls label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+    .ai-model-field { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+    .ai-provider-controls select { width: 100%; min-width: 0; height: 38px; padding: 7px 9px; border: 1px solid rgba(38, 56, 79, 0.2); border-radius: 7px; color: var(--ink); background: #fff; font: inherit; -webkit-user-select: text; user-select: text; }
+    .ai-model-control { display: flex; gap: 6px; }
+    .ai-model-control select { flex: 1; }
+    .ai-model-control button { min-width: 82px; height: 38px; padding: 0 8px; font-size: 12px; }
+    .ai-key-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 13px; }
+    .ai-key-controls input, #aiMessageInput { min-width: 0; border: 1px solid rgba(38, 56, 79, 0.2); border-radius: 8px; padding: 9px 11px; color: var(--ink); background: #fff; outline-color: var(--accent); }
+    .ai-key-controls input { flex: 1; height: 40px; -webkit-user-select: text; user-select: text; }
+    .ai-key-controls button { min-width: 76px; height: 40px; }
+    #aiKeyStatus { min-height: 18px; margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    #aiMessages { display: flex; flex: 1; flex-direction: column; gap: 12px; overflow-y: auto; padding: 16px; overscroll-behavior: contain; -webkit-user-select: text; user-select: text; }
+    .ai-message { max-width: 88%; padding: 10px 12px; border-radius: 12px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
+    .ai-message.user { align-self: flex-end; background: #e3f4f3; }
+    .ai-message.assistant, .ai-message.error { align-self: flex-start; background: #f0f3f6; }
+    .ai-message.error { color: var(--danger); }
+    .ai-composer { align-items: flex-end; border-top: 1px solid #e7edf2; }
+    #aiMessageInput { flex: 1; min-height: 42px; max-height: 120px; resize: vertical; line-height: 1.4; -webkit-user-select: text; user-select: text; }
+    #aiSendBtn { min-width: 68px; height: 42px; color: #fff; border-color: var(--accent); background: var(--accent); }
+    #aiSendBtn:hover { background: #0b7375; }
+    .ai-message mjx-container[jax="CHTML"] { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+    .ai-message mjx-container[display="true"] { display: block; padding: 2px 0; }
+
     @media (max-width: 720px) {
       #toolbar {
         top: auto;
@@ -294,8 +341,28 @@
       #status {
         bottom: calc(max(10px, env(safe-area-inset-bottom)) + 72px);
       }
+
+      #aiDialog { width: 100vw; height: 100dvh; max-height: none; border: 0; border-radius: 0; margin: 0; }
+      .ai-header, .ai-key-controls, .ai-composer { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+      .ai-key-section, #aiMessages { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+    }
+
+    @media (max-width: 420px) {
+      .ai-provider-controls { grid-template-columns: 1fr; }
     }
   </style>
+  <script>
+    window.MathJax = {
+      startup: { typeset: false },
+      tex: {
+        inlineMath: [["$", "$"], ["\\(", "\\)"]],
+        displayMath: [["$$", "$$"], ["\\[", "\\]"]],
+        processEscapes: true
+      },
+      options: { skipHtmlTags: ["script", "noscript", "style", "textarea", "pre", "code"] }
+    };
+  </script>
+  <script id="mathJaxScript" defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-chtml.js" crossorigin="anonymous" onerror="this.dataset.failed='true'"></script>
 </head>
 <body>
   <main id="app" aria-label="無邊際白板">
@@ -346,6 +413,7 @@
         <button class="icon-button" id="exportPngBtn" type="button" title="匯出 PNG" aria-label="匯出 PNG">⇩</button>
         <button class="icon-button" id="exportJsonBtn" type="button" title="匯出 JSON" aria-label="匯出 JSON">{}</button>
         <button class="icon-button" id="importJsonBtn" type="button" title="匯入 JSON" aria-label="匯入 JSON">⇧</button>
+        <button id="openAiBtn" type="button" title="AI 對話" aria-label="開啟 AI 對話">AI 對話</button>
       </div>
 
       <div class="tool-group" aria-label="縮放比例">
@@ -356,6 +424,42 @@
     <div id="status" role="status" aria-live="polite"></div>
     <textarea id="stickyEditor" aria-label="便條內容"></textarea>
     <input type="file" id="importJsonInput" accept="application/json" hidden>
+    <dialog id="aiDialog" aria-labelledby="aiDialogTitle">
+      <section class="ai-panel">
+        <header class="ai-header">
+          <h2 class="ai-title" id="aiDialogTitle">AI 對話</h2>
+          <div><button id="clearAiChatBtn" type="button" title="清除對話">清除對話</button><button id="closeAiBtn" class="icon-button" type="button" aria-label="關閉 AI 對話">×</button></div>
+        </header>
+        <section class="ai-key-section" aria-label="API 金鑰設定">
+          <div class="ai-provider-controls">
+            <label for="aiProviderSelect">API 服務
+              <select id="aiProviderSelect" aria-label="API 服務">
+                <option value="openai">OpenAI 官方</option>
+                <option value="cgu">長庚 CGU Gateway（學校）</option>
+              </select>
+            </label>
+            <div class="ai-model-field">
+              <label for="aiModelSelect">模型</label>
+              <span class="ai-model-control">
+                <select id="aiModelSelect" aria-label="模型" disabled><option value="">先套用金鑰再載入模型</option></select>
+                <button id="loadAiModelsBtn" type="button" disabled>載入模型</button>
+              </span>
+            </div>
+          </div>
+          <label class="ai-key-label" id="aiApiKeyLabel" for="aiApiKeyInput">OpenAI 官方 API key（只保存在此頁面記憶體）</label>
+          <div class="ai-key-controls">
+            <input id="aiApiKeyInput" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="貼上 API key" aria-label="API key">
+            <button id="saveAiKeyBtn" type="button">套用金鑰</button><button id="clearAiKeyBtn" type="button">清除金鑰</button>
+          </div>
+          <p id="aiKeyStatus" role="status" aria-live="polite">金鑰不會寫入白板自動儲存或匯出檔。</p>
+        </section>
+        <div id="aiMessages" role="log" aria-live="polite" aria-label="AI 對話訊息"><div class="ai-message assistant">你好！選擇 API 服務並套用對應的 API key 後，就可以開始對話。</div></div>
+        <form id="aiChatForm" class="ai-composer">
+          <textarea id="aiMessageInput" rows="2" placeholder="輸入訊息…公式可用LaTeX（Enter 傳送，Shift+Enter 換行）" aria-label="輸入訊息"></textarea>
+          <button id="aiSendBtn" type="submit">傳送</button>
+        </form>
+      </section>
+    </dialog>
   </main>
 
   <script>
@@ -378,6 +482,30 @@
     const importJsonInput = document.getElementById("importJsonInput");
     const statusBox = document.getElementById("status");
     const stickyEditor = document.getElementById("stickyEditor");
+    const openAiBtn = document.getElementById("openAiBtn");
+    const aiDialog = document.getElementById("aiDialog");
+    const closeAiBtn = document.getElementById("closeAiBtn");
+    const clearAiChatBtn = document.getElementById("clearAiChatBtn");
+    const aiApiKeyInput = document.getElementById("aiApiKeyInput");
+    const aiApiKeyLabel = document.getElementById("aiApiKeyLabel");
+    const aiProviderSelect = document.getElementById("aiProviderSelect");
+    const aiModelSelect = document.getElementById("aiModelSelect");
+    const loadAiModelsBtn = document.getElementById("loadAiModelsBtn");
+    const saveAiKeyBtn = document.getElementById("saveAiKeyBtn");
+    const clearAiKeyBtn = document.getElementById("clearAiKeyBtn");
+    const aiKeyStatus = document.getElementById("aiKeyStatus");
+    const aiMessages = document.getElementById("aiMessages");
+    const aiChatForm = document.getElementById("aiChatForm");
+    const aiMessageInput = document.getElementById("aiMessageInput");
+    const aiSendBtn = document.getElementById("aiSendBtn");
+
+    let aiApiKey = "";
+    let aiKeyProvider = "";
+    let aiConversation = [];
+    let aiRequestInProgress = false;
+    let aiModelLoadInProgress = false;
+    let mathJaxReadyPromise = null;
+    let mathJaxTypesetQueue = Promise.resolve();
 
     const MIN_ZOOM = 0.1;
     const MAX_ZOOM = 5;
@@ -2038,6 +2166,81 @@
       showStatus(smoothStrokes ? "筆跡平滑已開啟。" : "筆跡平滑已關閉。");
     });
 
+    openAiBtn.addEventListener("click", () => {
+      aiDialog.showModal();
+      aiMessageInput.focus();
+    });
+
+    closeAiBtn.addEventListener("click", () => aiDialog.close());
+    aiDialog.addEventListener("click", (event) => {
+      if (event.target === aiDialog) aiDialog.close();
+    });
+
+    aiProviderSelect.addEventListener("change", () => {
+      const isCgu = aiProviderSelect.value === "cgu";
+      aiApiKey = "";
+      aiKeyProvider = "";
+      aiApiKeyInput.value = "";
+      aiConversation = [];
+      aiMessages.replaceChildren();
+      aiApiKeyLabel.textContent = (isCgu ? "長庚 CGU Gateway API key" : "OpenAI 官方 API key") + "（只保存在此頁面記憶體）";
+      aiApiKeyInput.placeholder = isCgu ? "貼上學校提供的 API key" : "貼上 OpenAI API key";
+      aiApiKeyInput.setAttribute("aria-label", isCgu ? "長庚 CGU Gateway API key" : "OpenAI 官方 API key");
+      aiModelSelect.replaceChildren(new Option("先套用金鑰再載入模型", ""));
+      aiModelSelect.disabled = true;
+      loadAiModelsBtn.disabled = true;
+      aiKeyStatus.textContent = "服務已切換；請輸入對應服務的 API key。模型是否可用依服務提供者的權限為準。";
+      appendAiMessage("assistant", isCgu ? "已切換至長庚 CGU Gateway。請使用學校提供的 API key 與校方可用模型。" : "已切換至 OpenAI 官方 API。請使用 OpenAI 官方 API key。");
+    });
+
+    saveAiKeyBtn.addEventListener("click", () => {
+      const nextKey = aiApiKeyInput.value.trim().replace(/^Bearer\s+/i, "").trim();
+      if (!nextKey) {
+        aiKeyStatus.textContent = "請先輸入所選服務提供者的 API key。";
+        aiApiKeyInput.focus();
+        return;
+      }
+      if (/\s/.test(nextKey)) {
+        aiKeyStatus.textContent = "API key 中間含有空白；請貼上服務提供者提供的原始金鑰，不要加引號。";
+        aiApiKeyInput.focus();
+        return;
+      }
+      aiApiKey = nextKey;
+      aiKeyProvider = aiProviderSelect.value;
+      aiApiKeyInput.value = "";
+      aiModelSelect.replaceChildren(new Option("按「載入模型」取得清單", ""));
+      aiModelSelect.disabled = true;
+      loadAiModelsBtn.disabled = false;
+      aiKeyStatus.textContent = "金鑰已套用，只保存在此頁面記憶體；按「載入模型」取得此金鑰可用的模型。重新整理或關閉頁面後金鑰會清除。";
+    });
+
+    clearAiKeyBtn.addEventListener("click", () => {
+      aiApiKey = "";
+      aiKeyProvider = "";
+      aiApiKeyInput.value = "";
+      aiModelSelect.replaceChildren(new Option("先套用金鑰再載入模型", ""));
+      aiModelSelect.disabled = true;
+      loadAiModelsBtn.disabled = true;
+      aiKeyStatus.textContent = "金鑰已清除。";
+    });
+
+    loadAiModelsBtn.addEventListener("click", loadAiModels);
+
+    clearAiChatBtn.addEventListener("click", () => {
+      if (aiRequestInProgress) return;
+      aiConversation = [];
+      aiMessages.replaceChildren();
+      appendAiMessage("assistant", "對話已清除。可以繼續提問。");
+    });
+
+    aiChatForm.addEventListener("submit", sendAiMessage);
+    aiMessageInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        aiChatForm.requestSubmit();
+      }
+    });
+
     addStickyBtn.addEventListener("click", addStickyNote);
     undoBtn.addEventListener("click", undoLastAction);
     deleteSelectedBtn.addEventListener("click", deleteSelectedStroke);
@@ -2156,6 +2359,212 @@
 
     function isEditingTextInput(target) {
       return target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+    }
+
+    function appendAiMessage(role, content, className = role) {
+      const message = document.createElement("div");
+      message.className = "ai-message " + className;
+      message.textContent = content;
+      aiMessages.appendChild(message);
+      aiMessages.scrollTop = aiMessages.scrollHeight;
+      typesetMath(message);
+      return message;
+    }
+
+    function waitForMathJax() {
+      if (window.MathJax && window.MathJax.typesetPromise) return Promise.resolve(window.MathJax);
+      if (!mathJaxReadyPromise) {
+        const script = document.getElementById("mathJaxScript");
+        mathJaxReadyPromise = new Promise((resolve) => {
+          if (!script) {
+            resolve(null);
+            return;
+          }
+          if (script.dataset.failed === "true") {
+            resolve(null);
+            return;
+          }
+          script.addEventListener("load", () => resolve(window.MathJax || null), { once: true });
+          script.addEventListener("error", () => resolve(null), { once: true });
+        });
+      }
+      return mathJaxReadyPromise;
+    }
+
+    function typesetMath(element) {
+      mathJaxTypesetQueue = mathJaxTypesetQueue.then(async () => {
+        const mathJax = await waitForMathJax();
+        if (mathJax && mathJax.typesetPromise && element.isConnected) {
+          await mathJax.typesetPromise([element]);
+        }
+      }).catch((error) => {
+        console.warn("MathJax could not render this message.", error);
+      });
+      return mathJaxTypesetQueue;
+    }
+
+    function getAiApiBaseUrl(provider) {
+      return provider === "cgu"
+        ? "https://air.cgu.edu.tw/cgullmapi/v1"
+        : "https://api.openai.com/v1";
+    }
+
+    async function loadAiModels() {
+      if (aiModelLoadInProgress || aiRequestInProgress) return;
+      if (!aiApiKey || aiKeyProvider !== aiProviderSelect.value) {
+        aiKeyStatus.textContent = "請先輸入並套用目前所選服務的 API key。";
+        aiApiKeyInput.focus();
+        return;
+      }
+
+      const provider = aiProviderSelect.value;
+      const key = aiApiKey;
+      aiModelLoadInProgress = true;
+      aiProviderSelect.disabled = true;
+      aiModelSelect.disabled = true;
+      loadAiModelsBtn.disabled = true;
+      saveAiKeyBtn.disabled = true;
+      clearAiKeyBtn.disabled = true;
+      aiKeyStatus.textContent = "正在向所選服務載入模型清單…";
+
+      try {
+        const response = await fetch(getAiApiBaseUrl(provider) + "/models", {
+          method: "GET",
+          headers: { "Authorization": "Bearer " + key }
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          const detail = result && result.error && result.error.message;
+          throw new Error(detail || "載入模型失敗（HTTP " + response.status + "）。");
+        }
+
+        const models = Array.isArray(result.data)
+          ? result.data.map((item) => item && item.id).filter((id) => typeof id === "string" && id.length > 0).sort()
+          : [];
+        if (models.length === 0) throw new Error("服務沒有回傳可用模型清單。");
+
+        aiModelSelect.replaceChildren(...models.map((id) => new Option(id, id)));
+        const preferredModel = provider === "cgu" ? "gpt-5.4-mini" : "gpt-4o-mini";
+        aiModelSelect.value = models.includes(preferredModel) ? preferredModel : models[0];
+        aiModelSelect.disabled = false;
+        aiKeyStatus.textContent = "已載入 " + models.length + " 個模型。請選擇可用模型。";
+      } catch (error) {
+        aiModelSelect.replaceChildren(new Option("載入失敗，請重試", ""));
+        aiModelSelect.disabled = true;
+        if (error instanceof TypeError) {
+          aiKeyStatus.textContent = provider === "openai"
+            ? "載入模型失敗：瀏覽器沒有收到 OpenAI 回應。請確認網路、防火牆、VPN 或瀏覽器擴充功能；若使用 file://，請改用 localhost HTTP 網頁伺服器。"
+            : "載入模型失敗：瀏覽器沒有收到 CGU 回應。請確認網路、防火牆、VPN 或瀏覽器擴充功能。";
+        } else {
+          aiKeyStatus.textContent = "載入模型失敗：" + (error.message || "請確認 API key、網路與服務權限。");
+        }
+      } finally {
+        aiModelLoadInProgress = false;
+        aiProviderSelect.disabled = false;
+        loadAiModelsBtn.disabled = false;
+        saveAiKeyBtn.disabled = false;
+        clearAiKeyBtn.disabled = false;
+      }
+    }
+
+    async function sendAiMessage(event) {
+      event.preventDefault();
+      const content = aiMessageInput.value.trim();
+      if (!content || aiRequestInProgress || aiModelLoadInProgress) return;
+      if (!aiApiKey) {
+        aiKeyStatus.textContent = "請先輸入並套用所選服務的 API key。";
+        aiApiKeyInput.focus();
+        return;
+      }
+      if (aiKeyProvider !== aiProviderSelect.value) {
+        aiKeyStatus.textContent = "目前金鑰與所選服務不相符，請重新輸入該服務提供的 API key。";
+        aiApiKeyInput.focus();
+        return;
+      }
+
+      const model = aiModelSelect.value;
+      if (!model) {
+        aiKeyStatus.textContent = "請先載入並選擇此 API key 可用的模型。";
+        loadAiModelsBtn.focus();
+        return;
+      }
+
+      aiMessageInput.value = "";
+      aiConversation.push({ role: "user", content });
+      appendAiMessage("user", content);
+      aiRequestInProgress = true;
+      aiSendBtn.disabled = true;
+      aiSendBtn.textContent = "思考中";
+      aiProviderSelect.disabled = true;
+      aiModelSelect.disabled = true;
+      loadAiModelsBtn.disabled = true;
+      saveAiKeyBtn.disabled = true;
+      clearAiKeyBtn.disabled = true;
+      const pendingMessage = appendAiMessage("assistant", "正在等待回覆…");
+
+      try {
+        const provider = aiProviderSelect.value;
+        const isCgu = provider === "cgu";
+        const endpoint = isCgu ? "/responses" : "/chat/completions";
+        const requestBody = isCgu
+          ? { model, input: aiConversation }
+          : { model, messages: aiConversation };
+        const response = await fetch(getAiApiBaseUrl(provider) + endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + aiApiKey
+          },
+          body: JSON.stringify(requestBody)
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          const detail = result && result.error && result.error.message;
+          throw new Error(detail || "API 請求失敗（HTTP " + response.status + "）。");
+        }
+
+        const answer = isCgu ? extractResponsesText(result) : extractChatCompletionText(result);
+        if (typeof answer !== "string" || !answer.trim()) throw new Error("AI 沒有傳回文字回覆，請再試一次。");
+        pendingMessage.textContent = answer.trim();
+        await typesetMath(pendingMessage);
+        aiConversation.push({ role: "assistant", content: answer.trim() });
+      } catch (error) {
+        aiConversation.pop();
+        pendingMessage.className = "ai-message error";
+        if (error instanceof TypeError) {
+          pendingMessage.textContent = location.protocol === "file:"
+            ? "瀏覽器無法連線到 API。若目前是以本機檔案（file://）開啟，可能是跨來源安全限制；請改用線上 HTTPS 網址或本機 HTTP 網頁伺服器。也請確認網路、防火牆、VPN 或瀏覽器擴充功能沒有阻擋請求。"
+            : "瀏覽器無法完成 API 請求（" + error.name + ": " + error.message + "）。請確認網路可連線到所選服務，並檢查防火牆、VPN 或瀏覽器擴充功能。";
+        } else {
+          pendingMessage.textContent = "無法取得回覆：" + (error.message || "請確認 API key 與 API 權限後重試。");
+        }
+      } finally {
+        aiRequestInProgress = false;
+        aiSendBtn.disabled = false;
+        aiSendBtn.textContent = "傳送";
+        aiProviderSelect.disabled = false;
+        aiModelSelect.disabled = !aiModelSelect.value;
+        loadAiModelsBtn.disabled = !aiApiKey || aiKeyProvider !== aiProviderSelect.value;
+        saveAiKeyBtn.disabled = false;
+        clearAiKeyBtn.disabled = false;
+        aiMessageInput.focus();
+        aiMessages.scrollTop = aiMessages.scrollHeight;
+      }
+    }
+
+    function extractChatCompletionText(result) {
+      const content = result && result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content;
+      return typeof content === "string" ? content : "";
+    }
+
+    function extractResponsesText(result) {
+      if (result && typeof result.output_text === "string") return result.output_text;
+      const output = result && Array.isArray(result.output) ? result.output : [];
+      return output
+        .flatMap((item) => Array.isArray(item && item.content) ? item.content : [])
+        .filter((item) => item && (item.type === "output_text" || item.type === "text"))
+        .map((item) => typeof item.text === "string" ? item.text : "")
+        .join("");
     }
 
     function exportJSON() {
