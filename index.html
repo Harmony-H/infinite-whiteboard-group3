@@ -423,6 +423,11 @@
           <input id="widthSlider" type="range" min="1" max="60" value="4" aria-label="粗細">
           <span id="widthValue">4px</span>
         </label>
+        <label class="width-control" title="文字大小">
+          文字
+          <input id="fontSizeSlider" type="range" min="10" max="96" value="24" aria-label="文字大小">
+          <span id="fontSizeValue">24px</span>
+        </label>
         <button class="icon-button active" id="smoothToggleBtn" type="button" title="筆跡平滑" aria-label="筆跡平滑" aria-pressed="true">≈</button>
       </div>
 
@@ -505,6 +510,8 @@
     const colorPicker = document.getElementById("colorPicker");
     const widthSlider = document.getElementById("widthSlider");
     const widthValue = document.getElementById("widthValue");
+    const fontSizeSlider = document.getElementById("fontSizeSlider");
+    const fontSizeValue = document.getElementById("fontSizeValue");
     const smoothToggleBtn = document.getElementById("smoothToggleBtn");
     const zoomLabel = document.getElementById("zoomLabel");
     const addStickyBtn = document.getElementById("addStickyBtn");
@@ -573,6 +580,11 @@
     const TEXT_MIN_HEIGHT = 40;
     const TEXT_MAX_WIDTH = 2000;
     const TEXT_MAX_HEIGHT = 2000;
+    const IMAGE_MIN_WIDTH = 40;
+    const IMAGE_MIN_HEIGHT = 40;
+    const IMAGE_MAX_WIDTH = 3000;
+    const IMAGE_MAX_HEIGHT = 3000;
+    const SELECTION_PADDING = 8;
 
     const viewport = {
       x: 0,
@@ -606,6 +618,9 @@
     let textResizePointerId = null;
     let textResizeOriginal = null;
     let textResizeChanged = false;
+    let imageResizePointerId = null;
+    let imageResizeOriginal = null;
+    let imageResizeChanged = false;
     let editingStickyId = null;
     let editingStickyOriginal = null;
     let editingTextId = null;
@@ -840,6 +855,10 @@
         }
       }
 
+      if (stroke.fillColor && stroke.type === "freehand" && isClosedFreehand(stroke)) {
+        targetCtx.fillStyle = stroke.fillColor;
+        targetCtx.fill();
+      }
       targetCtx.stroke();
       targetCtx.restore();
     }
@@ -1124,24 +1143,57 @@
       return null;
     }
 
+    function getSelectionBoxMetrics(stroke) {
+      const bounds = getStrokeBounds(stroke);
+      if (!bounds) return null;
+
+      const topLeft = worldToScreen(bounds.minX, bounds.minY);
+      const bottomRight = worldToScreen(bounds.maxX, bounds.maxY);
+      const left = Math.min(topLeft.x, bottomRight.x) - SELECTION_PADDING;
+      const top = Math.min(topLeft.y, bottomRight.y) - SELECTION_PADDING;
+      const right = Math.max(topLeft.x, bottomRight.x) + SELECTION_PADDING;
+      const bottom = Math.max(topLeft.y, bottomRight.y) + SELECTION_PADDING;
+
+      return {
+        left,
+        top,
+        right,
+        bottom,
+        width: right - left,
+        height: bottom - top
+      };
+    }
+
+    function getSelectionResizeHandle(stroke) {
+      const metrics = getSelectionBoxMetrics(stroke);
+      if (!metrics) return null;
+
+      const size = 14;
+      return {
+        x: metrics.right - size / 2,
+        y: metrics.bottom - size / 2,
+        size
+      };
+    }
+
     function findTextResizeControlAt(screenPoint) {
       if (activeTool !== "select" || !selectedStrokeId) return null;
 
       const textStroke = findStrokeById(selectedStrokeId);
       if (!textStroke || textStroke.type !== "text" || !isValidTextStroke(textStroke)) return null;
 
-      const bounds = getStrokeBounds(textStroke);
-      if (!bounds) return null;
+      const handle = getSelectionResizeHandle(textStroke);
+      return handle && isScreenPointInRect(screenPoint, handle) ? textStroke : null;
+    }
 
-      const padding = Math.max(8, 6);
-      const topLeft = worldToScreen(bounds.minX, bounds.minY);
-      const bottomRight = worldToScreen(bounds.maxX, bounds.maxY);
-      const right = Math.max(topLeft.x, bottomRight.x) + padding;
-      const bottom = Math.max(topLeft.y, bottomRight.y) + padding;
-      const size = 14;
-      const handle = { x: right - size / 2, y: bottom - size / 2, size };
+    function findImageResizeControlAt(screenPoint) {
+      if (activeTool !== "select" || !selectedStrokeId) return null;
 
-      return isScreenPointInRect(screenPoint, handle) ? textStroke : null;
+      const imageStroke = findStrokeById(selectedStrokeId);
+      if (!imageStroke || imageStroke.type !== "image" || !isValidImageStroke(imageStroke)) return null;
+
+      const handle = getSelectionResizeHandle(imageStroke);
+      return handle && isScreenPointInRect(screenPoint, handle) ? imageStroke : null;
     }
 
     function isScreenPointInRect(point, rect) {
@@ -1168,13 +1220,10 @@
       const bounds = getStrokeBounds(stroke);
       if (!bounds) return;
 
-      const padding = Math.max(8, (stroke.width || 1) * viewport.zoom / 2 + 6);
-      const topLeft = worldToScreen(bounds.minX, bounds.minY);
-      const bottomRight = worldToScreen(bounds.maxX, bounds.maxY);
-      const left = Math.min(topLeft.x, bottomRight.x) - padding;
-      const top = Math.min(topLeft.y, bottomRight.y) - padding;
-      const width = Math.abs(bottomRight.x - topLeft.x) + padding * 2;
-      const height = Math.abs(bottomRight.y - topLeft.y) + padding * 2;
+      const metrics = getSelectionBoxMetrics(stroke);
+      if (!metrics) return;
+
+      const { left, top, width, height } = metrics;
 
       ctx.save();
       ctx.strokeStyle = "#0f8b8d";
@@ -1365,6 +1414,9 @@
       textResizePointerId = null;
       textResizeOriginal = null;
       textResizeChanged = false;
+      imageResizePointerId = null;
+      imageResizeOriginal = null;
+      imageResizeChanged = false;
       erasedStrokeIds.clear();
       currentStroke = null;
       previewShape = null;
@@ -1438,7 +1490,7 @@
         y: world.y,
         width: TEXT_DEFAULT_WIDTH,
         height: TEXT_DEFAULT_HEIGHT,
-        fontSize: TEXT_FONT_SIZE,
+        fontSize: Number(fontSizeSlider.value) || TEXT_FONT_SIZE,
         color: colorPicker.value,
         text: ""
       };
@@ -1715,6 +1767,66 @@
       requestRedraw();
     }
 
+    function beginImageResize(event, imageStroke) {
+      if (!imageStroke || imageStroke.type !== "image") return;
+      confirmTextEdit();
+      selectedStrokeId = imageStroke.id;
+      imageResizePointerId = event.pointerId;
+      imageResizeOriginal = cloneStroke(imageStroke);
+      imageResizeChanged = false;
+      markLayerDirty();
+      requestRedraw();
+    }
+
+    function continueImageResize(event) {
+      if (imageResizePointerId !== event.pointerId || !imageResizeOriginal) return;
+
+      const point = getCanvasPoint(event);
+      const world = screenToWorld(point.x, point.y);
+      const imageStroke = findStrokeById(imageResizeOriginal.id);
+      if (!imageStroke || imageStroke.type !== "image") return;
+
+      const aspectRatio = imageResizeOriginal.width / imageResizeOriginal.height;
+      let width = clamp(world.x - imageResizeOriginal.x, IMAGE_MIN_WIDTH, IMAGE_MAX_WIDTH);
+      let height = width / aspectRatio;
+
+      if (height < IMAGE_MIN_HEIGHT) {
+        height = IMAGE_MIN_HEIGHT;
+        width = height * aspectRatio;
+      }
+      if (height > IMAGE_MAX_HEIGHT) {
+        height = IMAGE_MAX_HEIGHT;
+        width = height * aspectRatio;
+      }
+
+      imageStroke.width = width;
+      imageStroke.height = height;
+      imageResizeChanged = true;
+      markLayerDirty();
+      requestRedraw();
+    }
+
+    function endImageResize(event) {
+      if (imageResizePointerId !== event.pointerId) return;
+
+      const imageStroke = imageResizeOriginal ? findStrokeById(imageResizeOriginal.id) : null;
+      if (imageResizeChanged && imageStroke && imageStroke.type === "image" && imageResizeOriginal) {
+        pushUndoAction({
+          type: "update",
+          strokeId: imageStroke.id,
+          before: imageResizeOriginal,
+          after: cloneStroke(imageStroke)
+        });
+        scheduleAutosave();
+      }
+
+      imageResizePointerId = null;
+      imageResizeOriginal = null;
+      imageResizeChanged = false;
+      markLayerDirty();
+      requestRedraw();
+    }
+
     function beginSelection(event, world) {
       confirmStickyEdit();
       confirmTextEdit();
@@ -1737,6 +1849,7 @@
         colorPicker.value = hit.stroke.color;
         updateActiveSwatch();
       }
+      syncTextControls(hit.stroke);
       selectionOriginalStroke = cloneStroke(hit.stroke);
       updateUndoButton();
       markLayerDirty();
@@ -2038,6 +2151,12 @@
         stickyEditor.value = "";
         stickyEditor.style.display = "none";
       }
+      if (editingTextId === removed.id) {
+        editingTextId = null;
+        editingTextOriginal = null;
+        textEditor.value = "";
+        textEditor.style.display = "none";
+      }
 
       strokes.splice(index, 1);
       pushUndoAction({
@@ -2093,7 +2212,9 @@
     function findFillTargetAt(world) {
       for (let i = strokes.length - 1; i >= 0; i -= 1) {
         const stroke = strokes[i];
-        if (["rect", "square", "circle", "ellipse"].includes(stroke.type) && isPointInsideShape(stroke, world)) {
+        const isShape = ["rect", "square", "circle", "ellipse"].includes(stroke.type);
+        const isClosedFreehandStroke = stroke.type === "freehand" && isClosedFreehand(stroke);
+        if ((isShape || isClosedFreehandStroke) && isPointInsideFillArea(stroke, world)) {
           return { stroke, index: i };
         }
       }
@@ -2130,10 +2251,37 @@
       const centerY = top + ry;
       return ((point.x - centerX) / rx) ** 2 + ((point.y - centerY) / ry) ** 2 <= 1;
     }
+    function isClosedFreehand(stroke) {
+      if (!stroke || stroke.type !== "freehand" || !Array.isArray(stroke.points) || stroke.points.length < 3) {
+        return false;
+      }
+      const first = stroke.points[0];
+      const last = stroke.points[stroke.points.length - 1];
+      const tolerance = Math.max(12 / viewport.zoom, (stroke.width || 1) * 2);
+      return distance(first, last) <= tolerance;
+    }
+    function isPointInsideFillArea(stroke, point) {
+      if (stroke.type === "freehand") {
+        return isPointInsidePolygon(point, stroke.points);
+      }
+      return isPointInsideShape(stroke, point);
+    }
+    function isPointInsidePolygon(point, points) {
+      let inside = false;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+        const current = points[i];
+        const previous = points[j];
+        const crossesY = (current.y > point.y) !== (previous.y > point.y);
+        if (crossesY && point.x < (previous.x - current.x) * (point.y - current.y) / (previous.y - current.y) + current.x) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
     function fillStrokeAt(world) {
       const hit = findFillTargetAt(world);
       if (!hit) {
-        showStatus("請點選長方形、正方形、圓形或橢圓形的內部。 ");
+        showStatus("請點選封閉圖形或封閉手繪區域的內部。 ");
         return false;
       }
       const before = cloneStroke(hit.stroke);
@@ -2784,6 +2932,12 @@
         return;
       }
 
+      const imageResizeStroke = findImageResizeControlAt(getCanvasPoint(event));
+      if (imageResizeStroke) {
+        beginImageResize(event, imageResizeStroke);
+        return;
+      }
+
       if (pointerType === "touch"
         && penModeDetected
         && activeTool !== "pan"
@@ -2815,6 +2969,8 @@
         continuePinch();
       } else if (textResizePointerId === event.pointerId) {
         continueTextResize(event);
+      } else if (imageResizePointerId === event.pointerId) {
+        continueImageResize(event);
       } else if (stickyResizePointerId === event.pointerId) {
         continueStickyResize(event);
       } else if (pointer?.pointerType === "touch") {
@@ -2847,6 +3003,8 @@
         pinchState = null;
       } else if (textResizePointerId === event.pointerId) {
         endTextResize(event);
+      } else if (imageResizePointerId === event.pointerId) {
+        endImageResize(event);
       } else if (stickyResizePointerId === event.pointerId) {
         endStickyResize(event);
       } else if (pointerType === "touch") {
@@ -2873,6 +3031,19 @@
     canvas.addEventListener("pointerleave", (event) => {
       if (event.pointerType === "mouse" && event.buttons !== 0) {
         finishPointer(event);
+      }
+    });
+
+    canvas.addEventListener("dblclick", (event) => {
+      if (activeTool !== "select" || event.target !== canvas) return;
+
+      const point = getCanvasPoint(event);
+      const hit = findStrokeAt(screenToWorld(point.x, point.y));
+      if (hit && hit.stroke.type === "text") {
+        event.preventDefault();
+        selectedStrokeId = hit.stroke.id;
+        syncTextControls(hit.stroke);
+        startTextEdit(hit.stroke);
       }
     });
 
@@ -2905,6 +3076,40 @@
       requestRedraw();
       scheduleAutosave();
       showStatus("文字顏色已更新。");
+    }
+
+    function syncTextControls(stroke) {
+      if (!stroke || stroke.type !== "text" || !isValidTextStroke(stroke)) return;
+
+      const fontSize = clamp(Math.round(stroke.fontSize), Number(fontSizeSlider.min), Number(fontSizeSlider.max));
+      fontSizeSlider.value = String(fontSize);
+      fontSizeValue.textContent = fontSize + "px";
+    }
+
+    function updateSelectedTextFontSize() {
+      if (!selectedStrokeId) {
+        showStatus("請先選取文字框。");
+        return;
+      }
+
+      const textStroke = findStrokeById(selectedStrokeId);
+      if (!textStroke || textStroke.type !== "text" || !isValidTextStroke(textStroke)) {
+        showStatus("請先選取文字框。");
+        return;
+      }
+
+      const before = cloneStroke(textStroke);
+      textStroke.fontSize = clamp(Number(fontSizeSlider.value), 10, 96);
+      if (before.fontSize === textStroke.fontSize) return;
+
+      if (editingTextId !== textStroke.id) {
+        pushUndoAction({ type: "update", strokeId: textStroke.id, before, after: cloneStroke(textStroke) });
+      }
+      fontSizeValue.textContent = textStroke.fontSize + "px";
+      markLayerDirty();
+      requestRedraw();
+      scheduleAutosave();
+      showStatus("文字大小已更新。");
     }
 
     toolbar.addEventListener("click", (event) => {
@@ -2940,6 +3145,11 @@
       widthValue.textContent = widthSlider.value + "px";
       scheduleAutosave();
     });
+
+    fontSizeSlider.addEventListener("input", () => {
+      fontSizeValue.textContent = fontSizeSlider.value + "px";
+    });
+    fontSizeSlider.addEventListener("change", updateSelectedTextFontSize);
 
     smoothToggleBtn.addEventListener("click", () => {
       smoothStrokes = !smoothStrokes;
@@ -3218,6 +3428,15 @@
         event.preventDefault();
         deleteSelectedStroke();
         return;
+      }
+
+      if (event.code === "Enter" && !isEditingTextInput(event.target) && selectedStrokeId) {
+        const selectedStroke = findStrokeById(selectedStrokeId);
+        if (selectedStroke && selectedStroke.type === "text") {
+          event.preventDefault();
+          startTextEdit(selectedStroke);
+          return;
+        }
       }
 
       if (event.code === "Space" && !isEditingTextInput(event.target)) {
