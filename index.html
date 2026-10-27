@@ -331,6 +331,15 @@
         <button class="icon-button active" id="smoothToggleBtn" type="button" title="筆跡平滑" aria-label="筆跡平滑" aria-pressed="true">≈</button>
       </div>
 
+      <div class="tool-group" aria-label="背景與文字顏色">
+        <label class="width-control" title="白板背景顏色">背景
+          <input class="color-control" id="backgroundColorPicker" type="color" value="#ffffff" aria-label="白板背景顏色">
+        </label>
+        <label class="width-control" title="便條文字顏色">文字
+          <input class="color-control" id="stickyTextColorPicker" type="color" value="#172033" aria-label="便條文字顏色">
+        </label>
+      </div>
+
       <div class="tool-group" aria-label="白板操作">
         <button id="addStickyBtn" type="button" title="加入便條" aria-label="加入便條">＋便條</button>
         <div class="swatch-row" aria-label="便條顏色">
@@ -363,6 +372,8 @@
     const ctx = canvas.getContext("2d");
     const toolbar = document.getElementById("toolbar");
     const colorPicker = document.getElementById("colorPicker");
+    const backgroundColorPicker = document.getElementById("backgroundColorPicker");
+    const stickyTextColorPicker = document.getElementById("stickyTextColorPicker");
     const widthSlider = document.getElementById("widthSlider");
     const widthValue = document.getElementById("widthValue");
     const smoothToggleBtn = document.getElementById("smoothToggleBtn");
@@ -526,7 +537,7 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.restore();
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = backgroundColorPicker.value;
       ctx.fillRect(0, 0, cssWidth(), cssHeight());
     }
 
@@ -726,7 +737,7 @@
       const maxHeight = height - controlsHeight - padding * 1.6;
 
       targetCtx.save();
-      targetCtx.fillStyle = "rgba(23, 32, 51, 0.82)";
+      targetCtx.fillStyle = stickyTextColorPicker.value;
       targetCtx.font = Math.max(11, 15 * viewport.zoom) + "px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
       targetCtx.textBaseline = "top";
 
@@ -739,7 +750,7 @@
           targetCtx.fillText(lines[i], left, y);
         }
       } else if (note.id === selectedStrokeId) {
-        targetCtx.fillStyle = "rgba(23, 32, 51, 0.34)";
+        targetCtx.globalAlpha = 0.55;
         targetCtx.fillText("點編輯輸入文字", left, top);
       }
 
@@ -974,6 +985,8 @@
         },
         settings: {
           color: colorPicker.value,
+          backgroundColor: backgroundColorPicker.value,
+          stickyTextColor: stickyTextColorPicker.value,
           width: Number(widthSlider.value),
           stickyColor,
           smoothStrokes
@@ -1024,6 +1037,14 @@
         if (data.settings) {
           if (typeof data.settings.color === "string" && /^#[0-9a-f]{6}$/i.test(data.settings.color)) {
             colorPicker.value = data.settings.color;
+          }
+
+          if (typeof data.settings.backgroundColor === "string" && /^#[0-9a-f]{6}$/i.test(data.settings.backgroundColor)) {
+            backgroundColorPicker.value = data.settings.backgroundColor;
+          }
+
+          if (typeof data.settings.stickyTextColor === "string" && /^#[0-9a-f]{6}$/i.test(data.settings.stickyTextColor)) {
+            stickyTextColorPicker.value = data.settings.stickyTextColor;
           }
 
           if (Number.isFinite(data.settings.width)) {
@@ -1208,6 +1229,7 @@
       stickyEditor.style.width = Math.max(48, width - padding * 2) + "px";
       stickyEditor.style.height = Math.max(32, height - topOffset - padding) + "px";
       stickyEditor.style.backgroundColor = note.color || "#fef08a";
+      stickyEditor.style.color = stickyTextColorPicker.value;
       stickyEditor.style.fontSize = Math.max(11, 15 * viewport.zoom) + "px";
     }
 
@@ -2023,6 +2045,16 @@
       scheduleAutosave();
     });
 
+    backgroundColorPicker.addEventListener("input", () => {
+      requestRedraw();
+      scheduleAutosave();
+    });
+
+    stickyTextColorPicker.addEventListener("input", () => {
+      requestRedraw();
+      scheduleAutosave();
+    });
+
     widthSlider.addEventListener("input", () => {
       widthValue.textContent = widthSlider.value + "px";
       scheduleAutosave();
@@ -2167,6 +2199,10 @@
           y: viewport.y,
           zoom: viewport.zoom
         },
+        settings: {
+          backgroundColor: backgroundColorPicker.value,
+          stickyTextColor: stickyTextColorPicker.value
+        },
         strokes
       };
       const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -2203,6 +2239,15 @@
         viewport.x = data.viewport.x;
         viewport.y = data.viewport.y;
         viewport.zoom = clamp(data.viewport.zoom, MIN_ZOOM, MAX_ZOOM);
+      }
+
+      if (data.settings) {
+        if (typeof data.settings.backgroundColor === "string" && /^#[0-9a-f]{6}$/i.test(data.settings.backgroundColor)) {
+          backgroundColorPicker.value = data.settings.backgroundColor;
+        }
+        if (typeof data.settings.stickyTextColor === "string" && /^#[0-9a-f]{6}$/i.test(data.settings.stickyTextColor)) {
+          stickyTextColorPicker.value = data.settings.stickyTextColor;
+        }
       }
 
       cancelDrawing();
