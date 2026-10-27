@@ -428,6 +428,7 @@
 
       <div class="tool-group" aria-label="白板操作">
         <button class="icon-button" id="addStickyBtn" type="button" title="加入便條" aria-label="加入便條"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sticky-note preview-icon"><path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><path d="M15 3v5a1 1 0 0 0 1 1h5"/></svg></button>
+        <button class="icon-button" id="addImageBtn" type="button" title="加入圖片" aria-label="加入圖片">＋圖片</button>
         <div class="swatch-row" aria-label="便條顏色">
           <button class="color-swatch active" type="button" data-sticky-color="#fef08a" style="--swatch-color: #fef08a" title="淡黃色便條" aria-label="淡黃色便條"></button>
           <button class="color-swatch" type="button" data-sticky-color="#bbf7d0" style="--swatch-color: #bbf7d0" title="淡綠色便條" aria-label="淡綠色便條"></button>
@@ -458,6 +459,7 @@
     <textarea id="stickyEditor" aria-label="便條內容"></textarea>
     <textarea id="textEditor" aria-label="文字框內容"></textarea>
     <input type="file" id="importJsonInput" accept="application/json" hidden>
+    <input type="file" id="imageInput" accept="image/jpeg,image/png" hidden>
     <dialog id="aiDialog" aria-labelledby="aiDialogTitle">
       <section class="ai-panel">
         <header class="ai-header">
@@ -506,6 +508,7 @@
     const smoothToggleBtn = document.getElementById("smoothToggleBtn");
     const zoomLabel = document.getElementById("zoomLabel");
     const addStickyBtn = document.getElementById("addStickyBtn");
+    const addImageBtn = document.getElementById("addImageBtn");
     const undoBtn = document.getElementById("undoBtn");
     const redoBtn = document.getElementById("redoBtn");
     const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
@@ -517,9 +520,11 @@
     const exportJsonBtn = document.getElementById("exportJsonBtn");
     const importJsonBtn = document.getElementById("importJsonBtn");
     const importJsonInput = document.getElementById("importJsonInput");
+    const imageInput = document.getElementById("imageInput");
     const statusBox = document.getElementById("status");
     const stickyEditor = document.getElementById("stickyEditor");
     const textEditor = document.getElementById("textEditor");
+    const imageCache = new Map();
     const openAiBtn = document.getElementById("openAiBtn");
     const aiDialog = document.getElementById("aiDialog");
     const closeAiBtn = document.getElementById("closeAiBtn");
@@ -564,6 +569,10 @@
     const AUTOSAVE_DELAY = 250;
     const PINCH_ZOOM_DEADZONE = 0.015;
     const SHAPE_TOOLS = new Set(["line", "rect", "square", "circle", "ellipse"]);
+    const TEXT_MIN_WIDTH = 80;
+    const TEXT_MIN_HEIGHT = 40;
+    const TEXT_MAX_WIDTH = 2000;
+    const TEXT_MAX_HEIGHT = 2000;
 
     const viewport = {
       x: 0,
@@ -594,6 +603,9 @@
     let stickyResizeStartWorld = null;
     let stickyResizeOriginalNote = null;
     let stickyResizeChanged = false;
+    let textResizePointerId = null;
+    let textResizeOriginal = null;
+    let textResizeChanged = false;
     let editingStickyId = null;
     let editingStickyOriginal = null;
     let editingTextId = null;
@@ -783,6 +795,11 @@
         return;
       }
 
+      if (stroke.type === "image") {
+        drawImageStroke(targetCtx, stroke);
+        return;
+      }
+
       if (stroke.start && stroke.end) {
         drawShape(targetCtx, stroke);
       }
@@ -879,6 +896,27 @@
       targetCtx.stroke();
       targetCtx.restore();
     }
+
+    function drawImageStroke(targetCtx, imageStroke) {
+      if (!isValidImageStroke(imageStroke)) return;
+
+      let image = imageCache.get(imageStroke.src);
+      if (!image) {
+        image = new Image();
+        image.onload = () => {
+          markLayerDirty();
+          requestRedraw();
+        };
+        image.src = imageStroke.src;
+        imageCache.set(imageStroke.src, image);
+      }
+
+      if (!image.complete || !image.naturalWidth) return;
+
+      const topLeft = worldToScreen(imageStroke.x, imageStroke.y);
+      targetCtx.drawImage(image, topLeft.x, topLeft.y, imageStroke.width * viewport.zoom, imageStroke.height * viewport.zoom);
+    }
+
 
     function drawStickyNote(targetCtx, note) {
       if (!isValidStickyNote(note)) return;
@@ -1088,6 +1126,26 @@
       }
 
       return null;
+    }
+
+    function findTextResizeControlAt(screenPoint) {
+      if (activeTool !== "select" || !selectedStrokeId) return null;
+
+      const textStroke = findStrokeById(selectedStrokeId);
+      if (!textStroke || textStroke.type !== "text" || !isValidTextStroke(textStroke)) return null;
+
+      const bounds = getStrokeBounds(textStroke);
+      if (!bounds) return null;
+
+      const padding = Math.max(8, 6);
+      const topLeft = worldToScreen(bounds.minX, bounds.minY);
+      const bottomRight = worldToScreen(bounds.maxX, bounds.maxY);
+      const right = Math.max(topLeft.x, bottomRight.x) + padding;
+      const bottom = Math.max(topLeft.y, bottomRight.y) + padding;
+      const size = 14;
+      const handle = { x: right - size / 2, y: bottom - size / 2, size };
+
+      return isScreenPointInRect(screenPoint, handle) ? textStroke : null;
     }
 
     function isScreenPointInRect(point, rect) {
@@ -1308,10 +1366,43 @@
       selectionStartWorld = null;
       selectionOriginalStroke = null;
       selectionMoved = false;
+      textResizePointerId = null;
+      textResizeOriginal = null;
+      textResizeChanged = false;
       erasedStrokeIds.clear();
       currentStroke = null;
       previewShape = null;
     }
+
+    function addImage(file) {
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const image = new Image();
+        image.onload = () => {
+          const maxSize = 400;
+          const scale = Math.min(1, maxSize / image.width, maxSize / image.height);
+          const width = image.width * scale;
+          const height = image.height * scale;
+          const center = screenToWorld(cssWidth() / 2, cssHeight() / 2);
+          const imageStroke = { id: newId("image"), type: "image", src: reader.result, x: center.x - width / 2, y: center.y - height / 2, width, height };
+
+          imageCache.set(imageStroke.src, image);
+          strokes.push(imageStroke);
+          selectedStrokeId = imageStroke.id;
+          setTool("select");
+          markLayerDirty();
+          pushUndoAction({ type: "add", stroke: cloneStroke(imageStroke) });
+          requestRedraw();
+          scheduleAutosave();
+          showStatus("圖片已加入白板。");
+        };
+        image.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
 
     function addStickyNote() {
       confirmStickyEdit();
@@ -1581,6 +1672,53 @@
       requestRedraw();
     }
 
+    function beginTextResize(event, textStroke) {
+      if (!textStroke || textStroke.type !== "text") return;
+      confirmTextEdit();
+      selectedStrokeId = textStroke.id;
+      textResizePointerId = event.pointerId;
+      textResizeOriginal = cloneStroke(textStroke);
+      textResizeChanged = false;
+      markLayerDirty();
+      requestRedraw();
+    }
+
+    function continueTextResize(event) {
+      if (textResizePointerId !== event.pointerId || !textResizeOriginal) return;
+
+      const point = getCanvasPoint(event);
+      const world = screenToWorld(point.x, point.y);
+      const textStroke = findStrokeById(textResizeOriginal.id);
+      if (!textStroke || textStroke.type !== "text") return;
+
+      textStroke.width = clamp(world.x - textResizeOriginal.x, TEXT_MIN_WIDTH, TEXT_MAX_WIDTH);
+      textStroke.height = clamp(world.y - textResizeOriginal.y, TEXT_MIN_HEIGHT, TEXT_MAX_HEIGHT);
+      textResizeChanged = true;
+      markLayerDirty();
+      requestRedraw();
+    }
+
+    function endTextResize(event) {
+      if (textResizePointerId !== event.pointerId) return;
+
+      const textStroke = textResizeOriginal ? findStrokeById(textResizeOriginal.id) : null;
+      if (textResizeChanged && textStroke && textStroke.type === "text" && textResizeOriginal) {
+        pushUndoAction({
+          type: "update",
+          strokeId: textStroke.id,
+          before: textResizeOriginal,
+          after: cloneStroke(textStroke)
+        });
+        scheduleAutosave();
+      }
+
+      textResizePointerId = null;
+      textResizeOriginal = null;
+      textResizeChanged = false;
+      markLayerDirty();
+      requestRedraw();
+    }
+
     function beginSelection(event, world) {
       confirmStickyEdit();
       confirmTextEdit();
@@ -1599,6 +1737,10 @@
       }
 
       selectedStrokeId = hit.stroke.id;
+      if (hit.stroke.type === "text" && hit.stroke.color) {
+        colorPicker.value = hit.stroke.color;
+        updateActiveSwatch();
+      }
       selectionOriginalStroke = cloneStroke(hit.stroke);
       updateUndoButton();
       markLayerDirty();
@@ -1692,7 +1834,7 @@
         stroke.end.y += deltaY;
       }
 
-      if (stroke.type === "sticky" || stroke.type === "text") {
+      if (stroke.type === "sticky" || stroke.type === "text" || stroke.type === "image") {
         stroke.x += deltaX;
         stroke.y += deltaY;
       }
@@ -1708,6 +1850,10 @@
           maxX: stroke.x + stroke.noteWidth,
           maxY: stroke.y + stroke.noteHeight
         };
+      }
+
+      if (stroke.type === "image" && isValidImageStroke(stroke)) {
+        return { minX: stroke.x, minY: stroke.y, maxX: stroke.x + stroke.width, maxY: stroke.y + stroke.height };
       }
 
       if (stroke.type === "text" && isValidTextStroke(stroke)) {
@@ -2087,6 +2233,10 @@
         return isPointInText(world, stroke);
       }
 
+      if (stroke.type === "image") {
+        return isPointInImage(world, stroke);
+      }
+
       return false;
     }
 
@@ -2097,6 +2247,11 @@
         && point.y >= textStroke.y
         && point.y <= textStroke.y + textStroke.height;
     }
+
+    function isPointInImage(point, image) {
+      return isValidImageStroke(image) && point.x >= image.x && point.x <= image.x + image.width && point.y >= image.y && point.y <= image.y + image.height;
+    }
+
 
     function isPointInStickyNote(point, note) {
       return isValidStickyNote(note)
@@ -2656,6 +2811,12 @@
         return;
       }
 
+      const textResizeStroke = findTextResizeControlAt(getCanvasPoint(event));
+      if (textResizeStroke) {
+        beginTextResize(event, textResizeStroke);
+        return;
+      }
+
       if (pointerType === "touch"
         && penModeDetected
         && activeTool !== "pan"
@@ -2685,6 +2846,8 @@
 
       if (getActiveTouchCount() >= 2) {
         continuePinch();
+      } else if (textResizePointerId === event.pointerId) {
+        continueTextResize(event);
       } else if (stickyResizePointerId === event.pointerId) {
         continueStickyResize(event);
       } else if (pointer?.pointerType === "touch") {
@@ -2715,6 +2878,8 @@
       if (pointerType === "touch" && pinchState) {
         cancelDrawing();
         pinchState = null;
+      } else if (textResizePointerId === event.pointerId) {
+        endTextResize(event);
       } else if (stickyResizePointerId === event.pointerId) {
         endStickyResize(event);
       } else if (pointerType === "touch") {
@@ -2757,6 +2922,24 @@
     document.addEventListener("gesturechange", preventAppGesture, { passive: false });
     document.addEventListener("gestureend", preventAppGesture, { passive: false });
 
+    function updateSelectedTextColor() {
+      if (!selectedStrokeId) return;
+      const textStroke = findStrokeById(selectedStrokeId);
+      if (!textStroke || textStroke.type !== "text" || !isValidTextStroke(textStroke)) return;
+
+      const before = cloneStroke(textStroke);
+      textStroke.color = colorPicker.value;
+      if (JSON.stringify(before) === JSON.stringify(textStroke)) return;
+
+      if (editingTextId !== textStroke.id) {
+        pushUndoAction({ type: "update", strokeId: textStroke.id, before, after: cloneStroke(textStroke) });
+      }
+      markLayerDirty();
+      requestRedraw();
+      scheduleAutosave();
+      showStatus("文字顏色已更新。");
+    }
+
     toolbar.addEventListener("click", (event) => {
       const button = event.target.closest("[data-tool]");
       if (button) {
@@ -2767,6 +2950,7 @@
       if (swatch) {
         colorPicker.value = swatch.dataset.color;
         updateActiveSwatch();
+        updateSelectedTextColor();
         scheduleAutosave();
       }
 
@@ -2782,6 +2966,8 @@
       updateActiveSwatch();
       scheduleAutosave();
     });
+
+    colorPicker.addEventListener("change", updateSelectedTextColor);
 
     widthSlider.addEventListener("input", () => {
       widthValue.textContent = widthSlider.value + "px";
@@ -2874,6 +3060,16 @@
     });
 
     addStickyBtn.addEventListener("click", addStickyNote);
+    addImageBtn.addEventListener("click", () => {
+      imageInput.value = "";
+      imageInput.click();
+    });
+
+    imageInput.addEventListener("change", () => {
+      const file = imageInput.files && imageInput.files[0];
+      if (file) addImage(file);
+    });
+
     undoBtn.addEventListener("click", undoLastAction);
     redoBtn.addEventListener("click", redoLastAction);
     deleteSelectedBtn.addEventListener("click", deleteSelectedStroke);
@@ -3372,8 +3568,17 @@
         return isValidTextStroke(stroke);
       }
 
+      if (stroke.type === "image") {
+        return isValidImageStroke(stroke);
+      }
+
       return false;
     }
+
+    function isValidImageStroke(image) {
+      return image && typeof image.src === "string" && image.src.startsWith("data:image/") && Number.isFinite(image.x) && Number.isFinite(image.y) && Number.isFinite(image.width) && Number.isFinite(image.height) && image.width > 0 && image.height > 0;
+    }
+
 
     function isValidTextStroke(textStroke) {
       return textStroke
