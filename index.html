@@ -809,6 +809,10 @@
         }
       }
 
+      if (stroke.fillColor && stroke.type === "freehand" && isClosedFreehand(stroke)) {
+        targetCtx.fillStyle = stroke.fillColor;
+        targetCtx.fill();
+      }
       targetCtx.stroke();
       targetCtx.restore();
     }
@@ -1809,7 +1813,9 @@
     function findFillTargetAt(world) {
       for (let i = strokes.length - 1; i >= 0; i -= 1) {
         const stroke = strokes[i];
-        if (["rect", "square", "circle", "ellipse"].includes(stroke.type) && isPointInsideShape(stroke, world)) {
+        const isShape = ["rect", "square", "circle", "ellipse"].includes(stroke.type);
+        const isClosedFreehandStroke = stroke.type === "freehand" && isClosedFreehand(stroke);
+        if ((isShape || isClosedFreehandStroke) && isPointInsideFillArea(stroke, world)) {
           return { stroke, index: i };
         }
       }
@@ -1846,10 +1852,37 @@
       const centerY = top + ry;
       return ((point.x - centerX) / rx) ** 2 + ((point.y - centerY) / ry) ** 2 <= 1;
     }
+    function isClosedFreehand(stroke) {
+      if (!stroke || stroke.type !== "freehand" || !Array.isArray(stroke.points) || stroke.points.length < 3) {
+        return false;
+      }
+      const first = stroke.points[0];
+      const last = stroke.points[stroke.points.length - 1];
+      const tolerance = Math.max(12 / viewport.zoom, (stroke.width || 1) * 2);
+      return distance(first, last) <= tolerance;
+    }
+    function isPointInsideFillArea(stroke, point) {
+      if (stroke.type === "freehand") {
+        return isPointInsidePolygon(point, stroke.points);
+      }
+      return isPointInsideShape(stroke, point);
+    }
+    function isPointInsidePolygon(point, points) {
+      let inside = false;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+        const current = points[i];
+        const previous = points[j];
+        const crossesY = (current.y > point.y) !== (previous.y > point.y);
+        if (crossesY && point.x < (previous.x - current.x) * (point.y - current.y) / (previous.y - current.y) + current.x) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
     function fillStrokeAt(world) {
       const hit = findFillTargetAt(world);
       if (!hit) {
-        showStatus("請點選長方形、正方形、圓形或橢圓形的內部。 ");
+        showStatus("請點選封閉圖形或封閉手繪區域的內部。 ");
         return false;
       }
       const before = cloneStroke(hit.stroke);
