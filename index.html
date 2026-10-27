@@ -395,6 +395,8 @@
       <div class="tool-group" aria-label="繪圖工具">
         <button class="icon-button active" type="button" data-tool="pen" title="筆刷" aria-label="筆刷"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pen preview-icon"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg></button>
         <button class="icon-button" type="button" data-tool="eraser" title="橡皮擦" aria-label="橡皮擦"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eraser preview-icon"><path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21"/><path d="m5.082 11.09 8.828 8.828"/></svg></button>
+        <button class="icon-button" type="button" data-tool="highlighter" title="螢光筆" aria-label="螢光筆">🖍️</button>
+        <button class="icon-button" type="button" data-tool="fill" title="填色（點選封閉圖形內部）" aria-label="填色">🪣</button>
         <button class="icon-button" type="button" data-tool="strokeEraser" title="筆畫橡皮擦" aria-label="筆畫橡皮擦"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eraser preview-icon"><path d="M2 7h4M20 7h2" stroke-dasharray="1 2"/><path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21"/><path d="m5.082 11.09 8.828 8.828"/></svg></button>
         <button class="icon-button" type="button" data-tool="select" title="選擇筆畫" aria-label="選擇筆畫"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mouse-pointer preview-icon"><path d="M12.586 12.586 19 19"/><path d="M3.688 3.037a.497.497 0 0 0-.651.651l6.5 15.999a.501.501 0 0 0 .947-.062l1.569-6.083a2 2 0 0 1 1.448-1.479l6.124-1.579a.5.5 0 0 0 .063-.947z"/></svg></button>
         <button class="icon-button" type="button" data-tool="pan" title="平移" aria-label="平移"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hand preview-icon"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg></button>
@@ -757,7 +759,7 @@
     function drawStroke(targetCtx, stroke) {
       if (!stroke || !stroke.type) return;
 
-      if (stroke.type === "freehand" || stroke.type === "eraser") {
+      if (stroke.type === "freehand" || stroke.type === "highlighter" || stroke.type === "eraser") {
         drawFreehand(targetCtx, stroke);
         return;
       }
@@ -777,6 +779,7 @@
 
       targetCtx.save();
       targetCtx.globalCompositeOperation = stroke.type === "eraser" ? "destination-out" : "source-over";
+      targetCtx.globalAlpha = stroke.type === "highlighter" ? (stroke.opacity || 0.32) : 1;
       targetCtx.strokeStyle = stroke.color || "#000000";
       targetCtx.lineWidth = Math.max(1, (stroke.width || 1) * viewport.zoom);
       targetCtx.lineCap = "round";
@@ -849,6 +852,10 @@
         targetCtx.arc(centerX, centerY, side / 2, 0, Math.PI * 2);
       } else if (stroke.type === "ellipse") {
         targetCtx.ellipse(left + width / 2, top + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+      }
+      if (stroke.fillColor && stroke.type !== "line") {
+        targetCtx.fillStyle = stroke.fillColor;
+        targetCtx.fill();
       }
 
       targetCtx.stroke();
@@ -1614,7 +1621,7 @@
     function commitStroke(stroke) {
       if (!stroke) return;
 
-      if ((stroke.type === "freehand" || stroke.type === "eraser") && (!stroke.points || stroke.points.length < 1)) {
+      if ((stroke.type === "freehand" || stroke.type === "highlighter" || stroke.type === "eraser") && (!stroke.points || stroke.points.length < 1)) {
         return;
       }
 
@@ -1799,6 +1806,66 @@
       return true;
     }
 
+    function findFillTargetAt(world) {
+      for (let i = strokes.length - 1; i >= 0; i -= 1) {
+        const stroke = strokes[i];
+        if (["rect", "square", "circle", "ellipse"].includes(stroke.type) && isPointInsideShape(stroke, world)) {
+          return { stroke, index: i };
+        }
+      }
+      return null;
+    }
+    function isPointInsideShape(stroke, point) {
+      if (!stroke || !stroke.start || !stroke.end) return false;
+      if (stroke.type === "rect" || stroke.type === "square") {
+        const end = stroke.type === "square" ? getSquareEnd(stroke.start, stroke.end) : stroke.end;
+        const left = Math.min(stroke.start.x, end.x);
+        const right = Math.max(stroke.start.x, end.x);
+        const top = Math.min(stroke.start.y, end.y);
+        const bottom = Math.max(stroke.start.y, end.y);
+        return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
+      }
+      if (stroke.type === "circle") {
+        const width = Math.abs(stroke.end.x - stroke.start.x);
+        const height = Math.abs(stroke.end.y - stroke.start.y);
+        const side = Math.min(width, height);
+        const center = {
+          x: stroke.start.x + Math.sign(stroke.end.x - stroke.start.x || 1) * side / 2,
+          y: stroke.start.y + Math.sign(stroke.end.y - stroke.start.y || 1) * side / 2
+        };
+        return distance(point, center) <= side / 2;
+      }
+      const left = Math.min(stroke.start.x, stroke.end.x);
+      const right = Math.max(stroke.start.x, stroke.end.x);
+      const top = Math.min(stroke.start.y, stroke.end.y);
+      const bottom = Math.max(stroke.start.y, stroke.end.y);
+      const rx = (right - left) / 2;
+      const ry = (bottom - top) / 2;
+      if (rx === 0 || ry === 0) return false;
+      const centerX = left + rx;
+      const centerY = top + ry;
+      return ((point.x - centerX) / rx) ** 2 + ((point.y - centerY) / ry) ** 2 <= 1;
+    }
+    function fillStrokeAt(world) {
+      const hit = findFillTargetAt(world);
+      if (!hit) {
+        showStatus("請點選長方形、正方形、圓形或橢圓形的內部。 ");
+        return false;
+      }
+      const before = cloneStroke(hit.stroke);
+      const after = cloneStroke(hit.stroke);
+      after.fillColor = colorPicker.value;
+      if ((before.fillColor || "").toLowerCase() === after.fillColor.toLowerCase()) return false;
+      strokes[hit.index] = after;
+      selectedStrokeId = after.id;
+      pushUndoAction({ type: "update", strokeId: after.id, before, after: cloneStroke(after) });
+      markLayerDirty();
+      requestRedraw();
+      scheduleAutosave();
+      updateUndoButton();
+      showStatus("已填色。 ");
+      return true;
+    }
     function findStrokeAt(world) {
       for (let i = strokes.length - 1; i >= 0; i -= 1) {
         const stroke = strokes[i];
@@ -1817,7 +1884,7 @@
     function isStrokeHit(stroke, world) {
       const tolerance = Math.max(STROKE_ERASER_TOLERANCE / viewport.zoom, (stroke.width || 1) / 2 + 3 / viewport.zoom);
 
-      if (stroke.type === "freehand") {
+      if (stroke.type === "freehand" || stroke.type === "highlighter") {
         return isPointNearPolyline(world, stroke.points || [], tolerance);
       }
 
@@ -1945,6 +2012,11 @@
       const world = screenToWorld(point.x, point.y);
       drawingPointerId = event.pointerId;
 
+      if (activeTool === "fill") {
+        fillStrokeAt(world);
+        drawingPointerId = null;
+        return;
+      }
       if (activeTool === "strokeEraser") {
         strokeErasePointerId = event.pointerId;
         erasedStrokeIds = new Set();
@@ -1957,12 +2029,13 @@
         return;
       }
 
-      if (activeTool === "pen" || activeTool === "eraser") {
+      if (activeTool === "pen" || activeTool === "highlighter" || activeTool === "eraser") {
         currentStroke = {
           id: newId("stroke"),
-          type: activeTool === "pen" ? "freehand" : "eraser",
+          type: activeTool === "pen" ? "freehand" : activeTool === "highlighter" ? "highlighter" : "eraser",
           color: colorPicker.value,
           width: Number(widthSlider.value),
+          opacity: activeTool === "highlighter" ? 0.32 : 1,
           points: [world]
         };
         requestRedraw();
@@ -3080,7 +3153,7 @@
     function isValidStroke(stroke) {
       if (!stroke || typeof stroke.type !== "string") return false;
 
-      if (stroke.type === "freehand" || stroke.type === "eraser") {
+      if (stroke.type === "freehand" || stroke.type === "highlighter" || stroke.type === "eraser") {
         return Array.isArray(stroke.points) && stroke.points.every(isValidPoint);
       }
 
