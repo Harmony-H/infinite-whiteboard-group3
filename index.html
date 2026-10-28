@@ -406,7 +406,7 @@
         <button class="icon-button" type="button" data-tool="square" title="正方形" aria-label="正方形"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-square preview-icon"><rect width="18" height="18" x="3" y="3" rx="2"/></svg></button>
         <button class="icon-button" type="button" data-tool="circle" title="圓形" aria-label="圓形"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle preview-icon"><circle cx="12" cy="12" r="10"/></svg></button>
         <button class="icon-button" type="button" data-tool="ellipse" title="橢圓形" aria-label="橢圓形"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipse preview-icon"><ellipse cx="12" cy="12" rx="10" ry="6"/></svg></button>
-        <button class="icon-button" type="button" data-tool="text" title="文字框" aria-label="文字框"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-type preview-icon"><path d="M12 4v16"/><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/></svg></button>
+        <button class="icon-button" type="button" data-tool="text" title="文字框" aria-label="文字框">T</button>
       </div>
 
       <div class="tool-group" aria-label="筆觸設定">
@@ -429,6 +429,17 @@
           <span id="fontSizeValue">24px</span>
         </label>
         <button class="icon-button active" id="smoothToggleBtn" type="button" title="筆跡平滑" aria-label="筆跡平滑" aria-pressed="true">≈</button>
+      </div>
+
+      <div class="tool-group" aria-label="背景與文字顏色">
+        <label class="width-control" title="白板背景顏色">
+          背景
+          <input class="color-control" id="backgroundColorPicker" type="color" value="#ffffff" aria-label="白板背景顏色">
+        </label>
+        <label class="width-control" title="便條文字顏色">
+          便條字
+          <input class="color-control" id="stickyTextColorPicker" type="color" value="#172033" aria-label="便條文字顏色">
+        </label>
       </div>
 
       <div class="tool-group" aria-label="白板操作">
@@ -512,6 +523,8 @@
     const widthValue = document.getElementById("widthValue");
     const fontSizeSlider = document.getElementById("fontSizeSlider");
     const fontSizeValue = document.getElementById("fontSizeValue");
+    const backgroundColorPicker = document.getElementById("backgroundColorPicker");
+    const stickyTextColorPicker = document.getElementById("stickyTextColorPicker");
     const smoothToggleBtn = document.getElementById("smoothToggleBtn");
     const zoomLabel = document.getElementById("zoomLabel");
     const addStickyBtn = document.getElementById("addStickyBtn");
@@ -563,6 +576,7 @@
     const MIN_POINT_DISTANCE = 1.5;
     const STROKE_ERASER_TOLERANCE = 8;
     const DEFAULT_STICKY_COLOR = "#fef08a";
+    const DEFAULT_STICKY_TEXT_COLOR = "#172033";
     const DEFAULT_STICKY_SIZE = 200;
     const MIN_STICKY_SIZE = 60;
     const MAX_STICKY_SIZE = 800;
@@ -597,6 +611,7 @@
     let redoStack = [];
     let activeTool = "pen";
     let stickyColor = DEFAULT_STICKY_COLOR;
+    let stickyTextColor = DEFAULT_STICKY_TEXT_COLOR;
     let smoothStrokes = true;
     let activePointers = new Map();
     let activePenPointerIds = new Set();
@@ -728,7 +743,7 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.restore();
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = backgroundColorPicker.value;
       ctx.fillRect(0, 0, cssWidth(), cssHeight());
     }
 
@@ -979,7 +994,7 @@
       const maxHeight = height - controlsHeight - padding * 1.6;
 
       targetCtx.save();
-      targetCtx.fillStyle = "rgba(23, 32, 51, 0.82)";
+      targetCtx.fillStyle = stickyTextColor;
       targetCtx.font = Math.max(11, 15 * viewport.zoom) + "px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
       targetCtx.textBaseline = "top";
 
@@ -992,7 +1007,7 @@
           targetCtx.fillText(lines[i], left, y);
         }
       } else if (note.id === selectedStrokeId) {
-        targetCtx.fillStyle = "rgba(23, 32, 51, 0.34)";
+        targetCtx.globalAlpha = 0.55;
         targetCtx.fillText("點編輯輸入文字", left, top);
       }
 
@@ -1305,6 +1320,8 @@
           color: colorPicker.value,
           width: Number(widthSlider.value),
           stickyColor,
+          backgroundColor: backgroundColorPicker.value,
+          stickyTextColor,
           smoothStrokes
         },
         strokes
@@ -1362,6 +1379,15 @@
 
           if (typeof data.settings.stickyColor === "string" && /^#[0-9a-f]{6}$/i.test(data.settings.stickyColor)) {
             stickyColor = data.settings.stickyColor;
+          }
+
+          if (typeof data.settings.backgroundColor === "string" && /^#[0-9a-f]{6}$/i.test(data.settings.backgroundColor)) {
+            backgroundColorPicker.value = data.settings.backgroundColor;
+          }
+
+          if (typeof data.settings.stickyTextColor === "string" && /^#[0-9a-f]{6}$/i.test(data.settings.stickyTextColor)) {
+            stickyTextColor = data.settings.stickyTextColor;
+            stickyTextColorPicker.value = stickyTextColor;
           }
 
           if (typeof data.settings.smoothStrokes === "boolean") {
@@ -1665,6 +1691,7 @@
       stickyEditor.style.width = Math.max(48, width - padding * 2) + "px";
       stickyEditor.style.height = Math.max(32, height - topOffset - padding) + "px";
       stickyEditor.style.backgroundColor = note.color || "#fef08a";
+      stickyEditor.style.color = stickyTextColor;
       stickyEditor.style.fontSize = Math.max(11, 15 * viewport.zoom) + "px";
     }
 
@@ -3151,6 +3178,17 @@
     });
     fontSizeSlider.addEventListener("change", updateSelectedTextFontSize);
 
+    backgroundColorPicker.addEventListener("input", () => {
+      requestRedraw();
+      scheduleAutosave();
+    });
+
+    stickyTextColorPicker.addEventListener("input", () => {
+      stickyTextColor = stickyTextColorPicker.value;
+      requestRedraw();
+      scheduleAutosave();
+    });
+
     smoothToggleBtn.addEventListener("click", () => {
       smoothStrokes = !smoothStrokes;
       smoothToggleBtn.classList.toggle("active", smoothStrokes);
@@ -3687,6 +3725,10 @@
           y: viewport.y,
           zoom: viewport.zoom
         },
+        settings: {
+          backgroundColor: backgroundColorPicker.value,
+          stickyTextColor
+        },
         strokes
       };
       const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -3723,6 +3765,16 @@
         viewport.x = data.viewport.x;
         viewport.y = data.viewport.y;
         viewport.zoom = clamp(data.viewport.zoom, MIN_ZOOM, MAX_ZOOM);
+      }
+
+      if (data.settings) {
+        if (typeof data.settings.backgroundColor === "string" && /^#[0-9a-f]{6}$/i.test(data.settings.backgroundColor)) {
+          backgroundColorPicker.value = data.settings.backgroundColor;
+        }
+        if (typeof data.settings.stickyTextColor === "string" && /^#[0-9a-f]{6}$/i.test(data.settings.stickyTextColor)) {
+          stickyTextColor = data.settings.stickyTextColor;
+          stickyTextColorPicker.value = stickyTextColor;
+        }
       }
 
       cancelDrawing();
