@@ -1,10 +1,10 @@
 # 無邊際白板 Infinite Whiteboard
 
-![無邊際白板操作介面](UI.png)
+![無邊際白板 Infinite Whiteboard UI](UI.png)
 
-一款以單一 HTML 檔案實作的無邊際白板，適合課堂講解、概念整理、腦力激盪與小組討論。可在電腦、平板、手機及教室電子白板上使用，不需要帳號、後端服務或建置流程。
+Infinite Whiteboard 是一款專為教學情境設計的無邊際虛擬白板，可直接在電腦、平板、手機或教室電子白板上使用，支援自由書寫、繪圖、加入便條貼，適合用於課程講解、概念整理、腦力激盪、小組討論與重點統整。使用者無須註冊帳號，也不必安裝額外軟體；有網路時可直接開啟網站使用，無網路時只需下載 `index.html` 並以瀏覽器開啟即可執行。白板內容僅存在於目前使用的裝置與瀏覽器中，不會上傳；AI 對話是選用功能，使用時訊息會直接傳送至所選的 OpenAI 或長庚 CGU API。如需保存白板，可下載為圖片或匯出白板檔案，並於其他裝置重新匯入後繼續編輯。
 
-**線上使用：**[https://harmony-h.github.io/infinite-whiteboard-group3/](https://harmony-h.github.io/infinite-whiteboard-group3/)
+直接使用：https://harmony-h.github.io/infinite-whiteboard-group3/
 
 ## 功能
 
@@ -17,7 +17,7 @@
 - **保存與交換：**自動儲存在目前瀏覽器，並可匯出白板 JSON、匯入 JSON 或下載畫布 PNG。
 - **AI 對話（選用）：**可連接 OpenAI 官方 API 或長庚 CGU Gateway，載入可用模型並以 LaTeX 輸入及顯示公式。
 - **觸控支援：**觸控筆或單指繪圖，雙指平移和縮放；提供手機和平板版工具列配置。
-- **工具列圖示：**工具列使用 Lucide SVG 圖示；螢光筆、填色與加入圖片按鈕使用 `highlighter`、`paint-bucket` 及 `image-plus` 圖示。
+- **工具列圖示：**工具列使用內嵌的 Lucide SVG 圖示，不需額外載入圖示檔或執行建置；螢光筆、填色與加入圖片按鈕使用 `highlighter`、`paint-bucket` 及 `image-plus` 圖示。
 
 ## 操作
 
@@ -60,15 +60,38 @@ API key 只保存在頁面記憶體，重新整理或關閉頁面後會清除，
 npx --yes http-server . -p 8000
 ```
 
-接著瀏覽 `http://localhost:8000/`。也可以使用其他靜態檔案伺服器。若 AI 顯示 `Failed to fetch`，請確認網路、防火牆、VPN 或瀏覽器擴充功能是否阻擋 API 請求；HTTP 401 則通常表示金鑰無效或不具權限。
+也可以使用任何能提供靜態檔案的本機 HTTP 伺服器。請避免直接用 `file://` 開啟，因為瀏覽器可能阻擋跨來源 API 請求。
 
-## 專案檔案
+如果載入 OpenAI 模型顯示 `Failed to fetch`，代表瀏覽器沒有收到 `/v1/models` 的 HTTP 回應，通常是網路、防火牆、VPN 或瀏覽器擴充功能阻擋請求。若 API key 不正確，服務通常會回傳 HTTP 401，而不是 `Failed to fetch`；請先在瀏覽器開啟 `https://api.openai.com/v1/models`，確認網路能連到 OpenAI，再暫停會攔截 API 的擴充功能並重試。
 
-- `index.html`：白板介面、樣式與程式邏輯。
-- `UI.png`：README 使用的介面預覽圖。
-- `無邊際白板規格書.md`：專案規格文件。
+### AI 對話
 
-專案不需要 npm 安裝套件或建置；MathJax 僅在公式排版時由 CDN 載入。
+1. 點工具列的「AI 對話」。
+2. 選擇 API 服務，貼上相同服務提供的 API key，按「套用金鑰」。
+3. 按「載入模型」，從下拉選單選擇可用模型。
+4. 公式可用LaTeX表示；送出後會在對話中排版，AI 回覆中的公式也會排版。
+5. 輸入訊息後按 Enter 或「傳送」；Shift+Enter 可換行。
+6. 按「清除金鑰」可立即移除目前頁面中的金鑰；重新整理或關閉頁面也會清除。
+
+AI 與公式排版需要網路；公式使用 MathJax 3.2.2（jsDelivr CDN），若 CDN 無法載入，公式會以原始 LaTeX 文字顯示。按「載入模型」時，瀏覽器會向所選服務的 `/models` 傳送金鑰並取得模型清單；OpenAI 官方金鑰使用 `https://api.openai.com/v1`，長庚學校金鑰使用 `https://air.cgu.edu.tw/cgullmapi/v1`，兩者不能互換。OpenAI 官方使用 `/chat/completions`，CGU Gateway 使用 `/responses`，因為 CGU 的部分模型只支援 Responses API。清單中的模型仍依服務提供者的權限與 endpoint 支援狀況而定。訊息會由瀏覽器直接傳送到所選 API，白板內容不會自動附加。以 `file://` 直接開啟下載的 `index.html` 時，瀏覽器可能因跨來源安全限制而擋下 API 請求；遇到連線錯誤時，請改用上方線上 HTTPS 網址或本機 HTTP 網頁伺服器，並檢查網路與防火牆設定。API key 僅暫存在頁面記憶體，不會寫入白板自動儲存、匯出 JSON 或瀏覽器儲存空間。請只在可信任的裝置與網頁輸入金鑰。
+
+桌機操作：
+
+- 滑鼠拖曳：使用目前工具繪圖
+- 正方形工具：拖曳繪製，水平或垂直拖曳距離較長的一側會決定正方形邊長
+- 滾輪：以滑鼠位置為中心縮放
+- 空白鍵 + 拖曳：平移白板
+
+觸控操作：
+
+- 單指拖曳：使用目前工具繪圖
+- 雙指拖曳：平移白板
+- 雙指張合：縮放白板
+
+## 檔案
+
+- `index.html`：白板主程式
+- `無邊際白板規格書.md`：開發規格書
 
 ## 授權
 
