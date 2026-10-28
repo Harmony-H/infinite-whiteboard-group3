@@ -236,6 +236,9 @@
       background: #eef3f6;
       color: #26364d;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
     #toolbar.readonly [data-tool]:not([data-tool="pan"]),
     #toolbar.readonly .tool-group[aria-label="筆觸設定"],
     #toolbar.readonly #addStickyBtn,
@@ -245,6 +248,9 @@
     #toolbar.readonly #clearBtn,
     #toolbar.readonly #importJsonBtn { display:none !important; }
 
+    #status {
+      position: fixed;
+      left: 50%;
       bottom: max(16px, env(safe-area-inset-bottom));
       z-index: 11;
       max-width: min(560px, calc(100vw - 24px));
@@ -307,7 +313,13 @@
     <div id="toolbar" role="toolbar" aria-label="白板工具列">
       <div class="tool-group" aria-label="繪圖工具">
         <button class="icon-button active" type="button" data-tool="pen" title="筆刷" aria-label="筆刷">✎</button>
+        <button class="icon-button" type="button" data-tool="eraser" title="橡皮擦" aria-label="橡皮擦">⌫</button>
+        <button class="icon-button" type="button" data-tool="strokeEraser" title="筆畫橡皮擦" aria-label="筆畫橡皮擦">⌧</button>
+        <button class="icon-button" type="button" data-tool="select" title="選擇筆畫" aria-label="選擇筆畫">☝</button>
         <button class="icon-button" type="button" data-tool="marquee" title="矩形框選" aria-label="矩形框選">▧</button>
+        <button class="icon-button" type="button" data-tool="pan" title="平移" aria-label="平移">↔</button>
+        <button class="icon-button" type="button" data-tool="line" title="直線" aria-label="直線">╱</button>
+        <button class="icon-button" type="button" data-tool="rect" title="長方形" aria-label="長方形">□</button>
         <button class="icon-button" type="button" data-tool="circle" title="圓形" aria-label="圓形">○</button>
         <button class="icon-button" type="button" data-tool="ellipse" title="橢圓形" aria-label="橢圓形">◯</button>
       </div>
@@ -343,10 +355,16 @@
         <button class="icon-button" id="resetViewBtn" type="button" title="回到中心" aria-label="回到中心">⌂</button>
         <button class="icon-button" id="exportPngBtn" type="button" title="匯出 PNG" aria-label="匯出 PNG">⇩</button>
         <button class="icon-button" id="exportJsonBtn" type="button" title="匯出 JSON" aria-label="匯出 JSON">{}</button>
+        <button class="icon-button" id="importJsonBtn" type="button" title="匯入 JSON" aria-label="匯入 JSON">⇧</button>
+      </div>
+
       <div class="tool-group" aria-label="檢視模式">
         <button class="icon-button" id="readOnlyBtn" type="button" title="切換唯讀模式" aria-label="切換唯讀模式" aria-pressed="false">🔓</button>
       </div>
 
+      <div class="tool-group" aria-label="縮放比例">
+        <span id="zoomLabel">100%</span>
+      </div>
     </div>
 
     <div id="status" role="status" aria-live="polite"></div>
@@ -371,7 +389,13 @@
     const exportPngBtn = document.getElementById("exportPngBtn");
     const exportJsonBtn = document.getElementById("exportJsonBtn");
     const importJsonBtn = document.getElementById("importJsonBtn");
+    const importJsonInput = document.getElementById("importJsonInput");
+    const statusBox = document.getElementById("status");
+    const stickyEditor = document.getElementById("stickyEditor");
     const readOnlyBtn = document.getElementById("readOnlyBtn");
+
+    const MIN_ZOOM = 0.1;
+    const MAX_ZOOM = 5;
     const GRID_SIZE = 50;
     const MIN_POINT_DISTANCE = 1.5;
     const STROKE_ERASER_TOLERANCE = 8;
@@ -401,9 +425,15 @@
     let smoothStrokes = true;
     let activePointers = new Map();
     let drawingPointerId = null;
+    let strokeErasePointerId = null;
+    let selectionPointerId = null;
+    let selectedStrokeId = null;
     let selectedStrokeIds = new Set();
     let marqueeRect = null;
     let readOnly = false;
+    let selectionStartWorld = null;
+    let selectionOriginalStroke = null;
+    let selectionMoved = false;
     let stickyResizePointerId = null;
     let stickyResizeNoteId = null;
     let stickyResizeStartWorld = null;
@@ -868,6 +898,9 @@
       ctx.setLineDash([8, 6]);
       drawStroke(ctx, previewShape);
       ctx.restore();
+    }
+
+    function drawSelectionBox() {
       if (activeTool === "marquee" && marqueeRect) {
         const a = worldToScreen(marqueeRect.minX, marqueeRect.minY);
         const b = worldToScreen(marqueeRect.maxX, marqueeRect.maxY);
@@ -881,6 +914,9 @@
           ctx.save(); ctx.strokeStyle="#0f8b8d"; ctx.lineWidth=1.5; ctx.setLineDash([5,4]); ctx.strokeRect(a.x-4,a.y-4,b.x-a.x+8,b.y-a.y+8); ctx.restore();
         }
       }
+      if (activeTool !== "select" || !selectedStrokeId) return;
+
+      const stroke = findStrokeById(selectedStrokeId);
       const bounds = getStrokeBounds(stroke);
       if (!bounds) return;
 
@@ -929,7 +965,13 @@
 
     function updateZoomLabel() {
       zoomLabel.textContent = Math.round(viewport.zoom * 100) + "%";
+    }
+
+    function setTool(tool) {
       if (readOnly && tool !== "pan") return;
+      activeTool = tool;
+      for (const button of toolbar.querySelectorAll("[data-tool]")) {
+        button.classList.toggle("active", button.dataset.tool === tool);
       }
       updatePanCursor();
       requestRedraw();
@@ -1251,7 +1293,13 @@
       markLayerDirty();
       requestRedraw();
     }
+
+    function beginSelection(event, world) {
+      confirmStickyEdit();
       selectedStrokeIds.clear();
+      selectionPointerId = event.pointerId;
+      selectionStartWorld = world;
+      selectionMoved = false;
 
       const hit = findStrokeAt(world);
       if (!hit) {
@@ -1313,7 +1361,13 @@
       redoStack = [];
       updateUndoButton();
     }
+
+    function updateUndoButton() {
+      undoBtn.disabled = undoStack.length === 0;
       deleteSelectedBtn.disabled = !selectedStrokeId && selectedStrokeIds.size === 0;
+    }
+
+    function findStrokeById(id) {
       return strokes.find((stroke) => stroke.id === id) || null;
     }
 
@@ -1442,11 +1496,18 @@
         return;
       }
 
+      if (action.type === "add") {
+        removeStrokeById(action.stroke.id);
+        if (selectedStrokeId === action.stroke.id) {
           selectedStrokeId = null; selectedStrokeIds.delete(action.stroke.id);
+        }
       } else if (action.type === "multiDelete") {
         for (const item of action.items.slice().sort((a,b)=>a.index-b.index)) strokes.splice(clamp(item.index,0,strokes.length),0,cloneStroke(item.stroke));
         selectedStrokeIds = new Set(action.items.map(item=>item.stroke.id));
         selectedStrokeId = selectedStrokeIds.size === 1 ? [...selectedStrokeIds][0] : null;
+      } else if (action.type === "delete") {
+        const insertAt = clamp(action.index, 0, strokes.length);
+        strokes.splice(insertAt, 0, action.stroke);
         selectedStrokeId = action.stroke.id;
       } else if (action.type === "move" || action.type === "update") {
         replaceStrokeById(action.strokeId, cloneStroke(action.before));
@@ -1468,6 +1529,9 @@
       updateUndoButton();
       scheduleAutosave();
       showStatus("已返回上一步。");
+    }
+
+    function deleteSelectedStroke() {
       if (readOnly) return;
       if (selectedStrokeIds.size > 1) {
         const removed = strokes.map((stroke,index)=>({stroke,index})).filter(x=>selectedStrokeIds.has(x.stroke.id));
@@ -1476,6 +1540,9 @@
         pushUndoAction({ type:"multiDelete", items:removed.map(x=>({stroke:cloneStroke(x.stroke),index:x.index})) });
         selectedStrokeIds.clear(); selectedStrokeId=null; markLayerDirty(); requestRedraw(); updateUndoButton(); scheduleAutosave(); showStatus(`已刪除 ${removed.length} 個物件。`); return;
       }
+      if (!selectedStrokeId) {
+        showStatus("尚未選取任何物件。");
+        return;
       }
 
       const index = findStrokeIndexById(selectedStrokeId);
@@ -1504,7 +1571,13 @@
       pushUndoAction({
         type: "delete",
         stroke: removed,
+        index
+      });
+      selectedStrokeId = null;
       selectedStrokeIds.clear();
+      cancelDrawing();
+      markLayerDirty();
+      requestRedraw();
       updateUndoButton();
       scheduleAutosave();
       if (message) {
@@ -1523,7 +1596,13 @@
       const hit = findStrokeAt(world);
       if (!hit || erasedStrokeIds.has(hit.stroke.id)) return false;
 
+      strokes.splice(hit.index, 1);
+      if (selectedStrokeId === hit.stroke.id) {
+        selectedStrokeId = null;
         selectedStrokeIds.delete(hit.stroke.id);
+        updateUndoButton();
+      }
+      if (editingStickyId === hit.stroke.id) {
         editingStickyId = null;
         editingStickyOriginal = null;
         stickyEditor.value = "";
@@ -1687,10 +1766,16 @@
         strokeErasePointerId = event.pointerId;
         erasedStrokeIds = new Set();
         eraseStrokeAt(world);
+        return;
+      }
+
       if (activeTool === "marquee") {
         selectionPointerId = event.pointerId; selectionStartWorld = world; marqueeRect = { minX: world.x, minY: world.y, maxX: world.x, maxY: world.y }; selectedStrokeIds.clear(); selectedStrokeId = null; requestRedraw(); return;
       }
 
+      if (activeTool === "select") {
+        beginSelection(event, world);
+        return;
       }
 
       if (activeTool === "pen" || activeTool === "eraser") {
@@ -1734,11 +1819,17 @@
 
       if (activeTool === "strokeEraser" && strokeErasePointerId === pointerId) {
         eraseStrokeAt(world);
+        return;
+      }
+
       if (activeTool === "marquee") {
         if (selectionPointerId === pointerId && selectionStartWorld) { marqueeRect = { minX: Math.min(selectionStartWorld.x,world.x), minY: Math.min(selectionStartWorld.y,world.y), maxX: Math.max(selectionStartWorld.x,world.x), maxY: Math.max(selectionStartWorld.y,world.y) }; requestRedraw(); }
         return;
       }
 
+      if (activeTool === "select") {
+        continueSelection(world, pointerId);
+        return;
       }
 
       if (drawingPointerId !== pointerId) return;
@@ -1762,6 +1853,9 @@
       if (activeTool === "strokeEraser" && strokeErasePointerId === event.pointerId) {
         strokeErasePointerId = null;
         erasedStrokeIds.clear();
+        return;
+      }
+
       if (activeTool === "marquee") {
         if (selectionPointerId === event.pointerId && marqueeRect) {
           selectedStrokeIds = new Set(strokes.filter(item => item.type !== "eraser").filter(item => { const b=getStrokeBounds(item); return b && b.minX >= marqueeRect.minX && b.maxX <= marqueeRect.maxX && b.minY >= marqueeRect.minY && b.maxY <= marqueeRect.maxY; }).map(item => item.id));
@@ -1772,6 +1866,9 @@
         return;
       }
 
+      if (activeTool === "select") {
+        endSelection(event);
+        return;
       }
 
       if (drawingPointerId !== event.pointerId) return;
@@ -1900,7 +1997,13 @@
       if (control && handleStickyControl(event, control)) {
         return;
       }
+
+      if (event.button === 1 || event.button === 2 || isSpacePressed || activeTool === "pan") {
+        beginPan(event);
       } else if (!readOnly) {
+        beginDrawing(event);
+      }
+    });
 
     canvas.addEventListener("pointermove", (event) => {
       if (!activePointers.has(event.pointerId)) return;
@@ -1998,6 +2101,9 @@
       markLayerDirty();
       requestRedraw();
       scheduleAutosave();
+      showStatus(smoothStrokes ? "筆跡平滑已開啟。" : "筆跡平滑已關閉。");
+    });
+
     function setReadOnly(enabled) {
       readOnly = Boolean(enabled);
       readOnlyBtn.textContent = readOnly ? "🔒" : "🔓";
@@ -2012,10 +2118,19 @@
     addStickyBtn.addEventListener("click", () => { if (!readOnly) addStickyNote(); });
     undoBtn.addEventListener("click", () => { if (!readOnly) undoLastAction(); });
     deleteSelectedBtn.addEventListener("click", () => { if (!readOnly) deleteSelectedStroke(); });
+
+    stickyEditor.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.code === "Enter") {
         event.preventDefault();
         confirmStickyEdit();
       }
+    });
+
+    clearBtn.addEventListener("click", () => {
       if (readOnly) return;
+      if (confirm("確定要清除整個白板嗎？")) {
+        if (strokes.length > 0) {
+          pushUndoAction({
             type: "clear",
             strokes: strokes.map(cloneStroke)
           });
@@ -2056,7 +2171,13 @@
       showStatus("已匯出 PNG。");
     });
 
+    exportJsonBtn.addEventListener("click", exportJSON);
+
+    importJsonBtn.addEventListener("click", () => {
       if (readOnly) return;
+      importJsonInput.value = "";
+      importJsonInput.click();
+    });
 
     importJsonInput.addEventListener("change", async () => {
       const file = importJsonInput.files && importJsonInput.files[0];
@@ -2070,7 +2191,13 @@
       } catch (error) {
         alert("匯入失敗：這不是有效的 JSON 檔案。");
       }
+    });
+
+    window.addEventListener("keydown", (event) => {
       if (readOnly) { if (event.code === "Space" && !isEditingTextInput(event.target)) { event.preventDefault(); isSpacePressed=true; updatePanCursor(); } return; }
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.code === "KeyZ" && !isEditingTextInput(event.target)) {
+        event.preventDefault();
+        undoLastAction();
         return;
       }
 
@@ -2134,7 +2261,13 @@
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       showStatus("已匯出 JSON。");
+    }
+
+    function importJSON(data) {
       if (readOnly) { showStatus("唯讀模式無法匯入白板。"); return; }
+      if (!data || !Array.isArray(data.strokes)) {
+        alert("匯入失敗：JSON 格式不符合白板資料格式。");
+        return;
       }
 
       strokes = data.strokes.filter(isValidStroke).map(cloneStroke);
